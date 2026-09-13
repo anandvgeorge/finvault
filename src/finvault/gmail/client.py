@@ -5,6 +5,13 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+import base64
+from datetime import datetime
+from bs4 import BeautifulSoup
+from email.utils import parsedate_to_datetime
+
+from finvault.models.email import Email
+
 
 class GmailClient:
     SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -40,6 +47,34 @@ class GmailClient:
             self.token_path.write_text(creds.to_json())
 
         return build("gmail", "v1", credentials=creds)
+        
+    def _extract_body(self, payload) -> tuple[str, str]:
+        mime_type = payload.get("mimeType", "")
+        body_data = payload.get("body", {}).get("data")
+
+        if body_data:
+            body = base64.urlsafe_b64decode(body_data).decode(
+                "utf-8",
+                errors="replace",
+            )
+
+            if mime_type == "text/html":
+                text = BeautifulSoup(body, "html.parser").get_text(
+                    separator="\n",
+                    strip=True,
+                )
+                return body, text
+
+            if mime_type == "text/plain":
+                return "", body
+
+        for part in payload.get("parts", []):
+            body_html, body_text = self._extract_body(part)
+
+            if body_html or body_text:
+                return body_html, body_text
+
+        return "", ""
 
     def get_labels(self):
         response = (
@@ -84,3 +119,32 @@ class GmailClient:
             )
             .execute()
         )
+        
+    def get_email(self, message_id: str) -> Email:
+        message = (
+            self.service.users()
+            .messages()
+            .get(
+                userId="me",
+                id=message_id,
+                format="full",
+            )
+            .execute()
+        )
+
+        headers = {
+            header["name"]: header["value"]
+            for header in message["payload"].get("headers", [])
+        }
+
+        body_html, body_text = self._extract_body(message["payload"])
+
+        return Email(
+            gmail_id=message["id"],
+            sender=headers.get("From", ""),
+            subject=headers.get("Subject", ""),
+            received_at=parsedate_to_datetime(headers["Date"]),
+            body_html=body_html,
+            body_text=body_text,
+        )
+        
