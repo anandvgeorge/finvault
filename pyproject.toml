@@ -1,12 +1,12 @@
 [project]
 name = "finvault"
 version = "0.1.0"
-description = "Add your description here"
+description = "Personal finance tracker"
 readme = "README.md"
 authors = [
     { name = "Anand George", email = "anandvgeorge@github.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "google-api-python-client>=2.200.0",
     "google-auth-httplib2>=0.4.2",
@@ -17,5 +17,8 @@ dependencies = [
 finvault = "finvault:main"
 
 [build-system]
-requires = ["uv_build>=0.12.13,<0.13.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/finvault"]
