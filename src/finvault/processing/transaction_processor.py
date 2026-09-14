@@ -21,13 +21,15 @@ class TransactionProcessor:
 
             if transaction is None:
                 logger.warning(
-                    "Could not parse email: %s | %s",
-                    email.gmail_id,
-                    email.subject,
+                    "Could not parse email: %s | %s | source=%s",
+                        email.gmail_id,
+                        email.subject,
+                        source,
                 )
                 failed_count += 1
                 continue
-
+            
+            self.database.save_transaction(transaction)
             parsed_count += 1
 
         logger.info(

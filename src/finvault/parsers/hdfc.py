@@ -41,9 +41,15 @@ class HDFCParser:
         amount = Decimal(amount_match.group(1))
         vpa = transaction_match.group(1)
         merchant = transaction_match.group(2)
-        transaction_date = datetime.strptime(
+
+        date = datetime.strptime(
             transaction_match.group(3),
             "%d-%m-%y",
+        ).date()
+
+        transaction_date = datetime.combine(
+            date,
+            email.received_at.time(),
         )
 
         reference = reference_match.group(1) if reference_match else None

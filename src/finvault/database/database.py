@@ -28,6 +28,24 @@ class Database:
             )
             """
         )
+        
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                amount TEXT NOT NULL,
+                currency TEXT NOT NULL,
+                transaction_type TEXT NOT NULL,
+                merchant TEXT NOT NULL,
+                transaction_date TEXT NOT NULL,
+                account TEXT NOT NULL,
+                source TEXT NOT NULL,
+                reference TEXT,
+                email_id TEXT NOT NULL UNIQUE,
+                FOREIGN KEY (email_id) REFERENCES emails(gmail_id)
+            )
+            """
+        )
 
         self.connection.commit()
 
@@ -89,6 +107,36 @@ class Database:
             )
             for row in cursor.fetchall()
         ]
+        
+    def save_transaction(self, transaction):
+        self.connection.execute(
+            """
+            INSERT OR IGNORE INTO transactions (
+                amount,
+                currency,
+                transaction_type,
+                merchant,
+                transaction_date,
+                account,
+                source,
+                reference,
+                email_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(transaction.amount),
+                transaction.currency,
+                transaction.transaction_type,
+                transaction.merchant,
+                transaction.transaction_date.isoformat(),
+                transaction.account,
+                transaction.source,
+                transaction.reference,
+                transaction.email_id,
+            ),
+        )
+        self.connection.commit()
 
     def close(self):
         self.connection.close()
