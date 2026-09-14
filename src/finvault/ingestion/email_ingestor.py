@@ -1,23 +1,30 @@
+from finvault.database.database import Database
 from finvault.gmail.client import GmailClient
 
 
 class EmailIngestor:
-    def __init__(self, gmail_client: GmailClient):
+    def __init__(
+        self,
+        gmail_client: GmailClient,
+        database: Database,
+    ):
         self.gmail_client = gmail_client
+        self.database = database
 
-    def ingest_label(self, label_name: str):
+    def ingest_label(self, label_name: str, limit: int = 10):
         messages = self.gmail_client.get_messages(label_name)
 
         print(f"{label_name}: {len(messages)} messages")
 
-        for message in messages[:10]:
-            email = self.gmail_client.get_email(message["id"])
+        for message in messages[:limit]:
+            gmail_id = message["id"]
 
-            print("=" * 80)
-            print("ID:", email.gmail_id)
-            print("Date:", email.received_at)
-            print("From:", email.sender)
-            print("Subject:", email.subject)
-            print("Body:")
-            print(email.body_text[:500])
-            
+            if self.database.email_exists(gmail_id):
+                continue
+
+            print(f"Fetching {gmail_id}...")
+
+            email = self.gmail_client.get_email(gmail_id)
+            self.database.save_email(email, label_name)
+
+        print(f"Processed {min(len(messages), limit)} emails")
