@@ -4,6 +4,7 @@ from finvault.database.database import Database
 from finvault.gmail.client import GmailClient
 from finvault.ingestion.email_ingestor import EmailIngestor
 from finvault.logging_config import setup_logging
+from finvault.processing.transaction_processor import TransactionProcessor
 
 
 def main():
@@ -19,6 +20,9 @@ def main():
 
     ingestor.ingest_label("UPI")
     ingestor.ingest_label("Credit card")
+
+    processor = TransactionProcessor(database)
+    processor.process()
 
     database.close()
 

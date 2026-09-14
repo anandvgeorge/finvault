@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from datetime import datetime
 
 from finvault.models.email import Email
 
@@ -63,6 +64,31 @@ class Database:
             (gmail_id,),
         )
         return cursor.fetchone() is not None
+    
+    def get_emails(self):
+        cursor = self.connection.execute(
+            """
+            SELECT gmail_id, sender, subject, received_at,
+                body_html, body_text, label
+            FROM emails
+            ORDER BY id
+            """
+        )
+
+        return [
+            (
+                Email(
+                    gmail_id=row[0],
+                    sender=row[1],
+                    subject=row[2],
+                    received_at=datetime.fromisoformat(row[3]),
+                    body_html=row[4] or "",
+                    body_text=row[5] or "",
+                ),
+                row[6],
+            )
+            for row in cursor.fetchall()
+        ]
 
     def close(self):
         self.connection.close()
