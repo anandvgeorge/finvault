@@ -93,20 +93,32 @@ class GmailClient:
 
         raise ValueError(f"Label not found: {label_name}")
 
-    def get_messages(self, label_name):
+    def get_messages(self, label_name: str):
         label_id = self.get_label_id(label_name)
 
-        response = (
-            self.service.users()
-            .messages()
-            .list(
-                userId="me",
-                labelIds=[label_id],
-            )
-            .execute()
-        )
+        messages = []
+        page_token = None
 
-        return response.get("messages", [])
+        while True:
+            response = (
+                self.service.users()
+                .messages()
+                .list(
+                    userId="me",
+                    labelIds=[label_id],
+                    pageToken=page_token,
+                    maxResults=100,
+                )
+                .execute()
+            )
+
+            messages.extend(response.get("messages", []))
+
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+
+        return messages
 
     def get_message(self, message_id):
         return (

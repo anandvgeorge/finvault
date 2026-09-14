@@ -11,12 +11,12 @@ class EmailIngestor:
         self.gmail_client = gmail_client
         self.database = database
 
-    def ingest_label(self, label_name: str, limit: int = 10):
+    def ingest_label(self, label_name: str):
         messages = self.gmail_client.get_messages(label_name)
 
         print(f"{label_name}: {len(messages)} messages")
 
-        for message in messages[:limit]:
+        for message in messages:
             gmail_id = message["id"]
 
             if self.database.email_exists(gmail_id):
@@ -27,4 +27,4 @@ class EmailIngestor:
             email = self.gmail_client.get_email(gmail_id)
             self.database.save_email(email, label_name)
 
-        print(f"Processed {min(len(messages), limit)} emails")
+        print(f"Processed {len(messages)} emails")

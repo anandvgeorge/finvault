@@ -9,8 +9,8 @@ def main():
 
     ingestor = EmailIngestor(gmail, database)
 
-    ingestor.ingest_label("UPI", limit=10)
-    ingestor.ingest_label("Credit card", limit=10)
+    ingestor.ingest_label("UPI")
+    ingestor.ingest_label("Credit card")
 
     database.close()
 
