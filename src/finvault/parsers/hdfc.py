@@ -14,6 +14,9 @@ class HDFCParser:
 
         if source == "Credit card":
             return self._parse_credit_card(email)
+        
+        if source == "Credit":
+            return self._parse_credit(email)
 
         return None
 
@@ -139,6 +142,66 @@ class HDFCParser:
                 account=f"HDFC CC {card}",
                 source="Credit card",
                 reference=None,
+                email_id=email.gmail_id,
+            )
+
+        return None
+
+
+    def _parse_credit(self, email: Email) -> Transaction | None:
+        body = email.body_text
+
+        # UPI credit
+        match = re.search(
+            r"Rs\.(?P<amount>\d+(?:\.\d+)?)\s+"
+            r"has been successfully credited to your HDFC Bank account "
+            r"ending in\s+(?P<account>\S+).*?"
+            r"Date:\s*(?P<date>\d{2}-\d{2}-\d{2}).*?"
+            r"Sender:\s*(?P<sender>.+?).*?"
+            r"UPI Reference No\.:\s*(?P<reference>\S+)",
+            body,
+            re.DOTALL,
+        )
+
+        if match:
+            return Transaction(
+                amount=Decimal(match.group("amount")),
+                currency="INR",
+                transaction_type="credit",
+                merchant=match.group("sender").strip(),
+                transaction_date=datetime.strptime(
+                    match.group("date"),
+                    "%d-%m-%y",
+                ),
+                account=f"HDFC {match.group('account')}",
+                source="Credit",
+                reference=match.group("reference"),
+                email_id=email.gmail_id,
+            )
+
+        # NEFT credit
+        match = re.search(
+            r"Amount received:\s*INR\s*(?P<amount>[\d,]+(?:\.\d+)?).*?"
+            r"Account:\s*(?P<account>\S+).*?"
+            r"Date:\s*(?P<date>\d{2}-[A-Z]{3}-\d{4}).*?"
+            r"Reference Details:\s*(?P<reference>\S+)",
+            body,
+            re.DOTALL,
+        )
+
+        if match:
+            return Transaction(
+                amount=Decimal(match.group("amount").replace(",", "")),
+                currency="INR",
+                transaction_type="credit",
+                merchant="NEFT",
+                transaction_date=datetime.strptime(
+                    match.group("date"),
+                    "%d-%b-%Y",
+                ),
+                account=f"HDFC {match.group('account')}",
+                source="Credit",
+                reference=match.group("reference"),
                 email_id=email.gmail_id,
             )
 
