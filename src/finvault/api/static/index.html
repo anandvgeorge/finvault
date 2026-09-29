@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>FinVault</title>
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 1000px;
+        margin: 40px auto;
+        padding: 0 20px;
+    }
+
+    .period-selector {
+        margin: 20px 0 30px;
+    }
+
+    .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 20px;
+    }
+
+    .card {
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+    }
+
+    .card h3 {
+        margin-top: 0;
+    }
+
+    .card p {
+        font-size: 24px;
+        font-weight: bold;
+    }
+</style>
+
+</head>
+
+<body>
+    <h1>FinVault</h1>
+
+<h2>Overview</h2>
+
+<div class="period-selector">
+    <select id="period">
+        <option value="month">This Month</option>
+        <option value="year">This Year</option>
+        <option value="all">All Time</option>
+    </select>
+</div>
+
+<div class="cards">
+    <div class="card">
+        <h3>Debits</h3>
+        <p id="total-debits">-</p>
+    </div>
+
+    <div class="card">
+        <h3>Credits</h3>
+        <p id="total-credits">-</p>
+    </div>
+
+    <div class="card">
+        <h3>Net Cashflow</h3>
+        <p id="net-cashflow">-</p>
+    </div>
+
+    <div class="card">
+        <h3>UPI Debits</h3>
+        <p id="upi-debits">-</p>
+    </div>
+
+    <div class="card">
+        <h3>Credit Card Debits</h3>
+        <p id="credit-card-debits">-</p>
+    </div>
+</div>
+
+<script>
+    async function loadOverview() {
+        const period = document.getElementById("period").value;
+
+        const response = await fetch(`/overview?period=${period}`);
+        const data = await response.json();
+
+        document.getElementById("total-debits").textContent =
+            `₹${data.total_debits.toLocaleString("en-IN")}`;
+
+        document.getElementById("total-credits").textContent =
+            `₹${data.total_credits.toLocaleString("en-IN")}`;
+
+        document.getElementById("net-cashflow").textContent =
+            `₹${data.net_cashflow.toLocaleString("en-IN")}`;
+
+        document.getElementById("upi-debits").textContent =
+            `₹${data.upi_debits.toLocaleString("en-IN")}`;
+
+        document.getElementById("credit-card-debits").textContent =
+            `₹${data.credit_card_debits.toLocaleString("en-IN")}`;
+    }
+
+    document.getElementById("period").addEventListener(
+        "change",
+        loadOverview
+    );
+
+    loadOverview();
+</script>
+
+</body>
+</html>
