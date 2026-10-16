@@ -28,6 +28,21 @@ uv run --locked uvicorn finvault.api.main:app --reload
 
 Open <http://127.0.0.1:8000/>. Both commands use `data/finvault.db`.
 
+## Tests and CI
+
+Run the unit tests locally:
+
+```bash
+uv run --locked python -m unittest discover -s tests -v
+```
+
+[GitHub Actions CI](.github/workflows/ci.yml) runs the same tests on pushes and
+pull requests, and can be started manually from the Actions tab. It uses the
+Python version in `.python-version` and the dependencies in `uv.lock`. Tests use
+synthetic data and mocked Gmail access; no Google credentials or repository
+secrets are required. This workflow runs tests only; Pi deployment is configured
+separately.
+
 ## License
 
 FinVault is available under the [MIT License](LICENSE). You may use, modify,
