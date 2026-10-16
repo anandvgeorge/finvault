@@ -14,7 +14,7 @@ function dashboard() {
         fetch: async () => { throw new Error("Unexpected network request"); },
     });
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, TransactionFilters, DashboardLoader, fetchJSON })", context), context };
+    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryMenu, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
 }
 
 function selection(years = [2024, 2025]) {
@@ -42,6 +42,33 @@ function element() {
         appendChild(child) { this.children.push(child); },
     };
 }
+
+test("transaction dates show stored time and offset without changing the calendar day", () => {
+    const { renderTransactionDate } = dashboard();
+    for (const [timestamp, time] of [
+        ["2001-10-13T09:15:30", "09:15:30"],
+        ["2001-10-13T00:10:00+05:30", "00:10:00 +05:30"],
+        ["2001-10-13T23:50:00-04:00", "23:50:00 -04:00"],
+        ["2001-10-13T09:15:30.123456Z", "09:15:30 UTC"],
+        ["2001-10-13T00:00:00", "00:00:00"],
+    ]) {
+        const cell = element();
+        renderTransactionDate(cell, timestamp);
+        const display = cell.children[0];
+        assert.equal(display.dateTime, timestamp);
+        assert.equal(display.text, "2001-10-13");
+        assert.equal(display.children[0].textContent, time);
+        assert.equal(display.children[0].className, "transaction-time");
+    }
+});
+
+test("a date without a stored time does not acquire a fabricated time", () => {
+    const { renderTransactionDate } = dashboard();
+    const cell = element();
+    renderTransactionDate(cell, "2001-10-13");
+    assert.equal(cell.textContent, "2001-10-13");
+    assert.equal(cell.children[0].children.length, 0);
+});
 
 test("amounts start visible with accessible Hide actions", () => {
     const { AmountVisibility } = dashboard();
@@ -98,6 +125,26 @@ test("newly filtered or loaded amounts remain masked without retaining removed c
     assert.equal(display.amounts.size, 1);
 });
 
+test("hiding totals also hides the net cashflow colour cue", () => {
+    const { AmountVisibility } = dashboard();
+    const button = element();
+    const display = new AmountVisibility(button, "totals");
+    const cashflow = element();
+    cashflow.id = "net-cashflow";
+    display.set(cashflow, -42);
+    assert.equal(cashflow.dataset.direction, "negative");
+    button.onclick();
+    assert.equal(cashflow.dataset.direction, "hidden");
+    display.set(cashflow, 100);
+    assert.equal(cashflow.textContent, "••••");
+    assert.equal(cashflow.dataset.direction, "hidden");
+    button.onclick();
+    assert.equal(cashflow.dataset.direction, "positive");
+    assert.equal(cashflow.textContent, "₹100");
+    display.set(cashflow, 0);
+    assert.equal(cashflow.dataset.direction, "neutral");
+});
+
 test("visibility can change while loading and a fresh page starts visible again", () => {
     const { AmountVisibility } = dashboard();
     const button = element();
@@ -111,6 +158,101 @@ test("visibility can change while loading and a fresh page starts visible again"
     fresh.set(amount, 0);
     assert.equal(amount.textContent, "₹0");
     assert.equal(fresh.visible, true);
+});
+
+function categoryMenu() {
+    const listeners = new Map();
+    const document = {
+        addEventListener(name, handler) { listeners.set(name, handler); },
+        defaultView: {
+            innerWidth: 375, innerHeight: 844,
+            addEventListener(name, handler) { listeners.set(name, handler); },
+            Event: class { constructor(type) { this.type = type; } },
+        },
+        createElement() {
+            const node = element();
+            Object.assign(node, {
+                style: {}, scrollTop: 0, scrollHeight: 240, clientHeight: 240,
+                offsetTop: 0, offsetHeight: 36,
+                removeAttribute(name) { this.attributes.delete(name); },
+                appendChild(child) { child.parentNode = this; this.children.push(child); },
+                contains(target) { return this === target || this.children.some(child => child.contains(target)); },
+                focus() {},
+                getBoundingClientRect() { return { left: 200, top: 780, bottom: 816, width: 160, height: 240 }; },
+            });
+            return node;
+        },
+    };
+    document.body = document.createElement();
+    const select = document.createElement();
+    select.options = ["Uncategorized", "Necessary", "Lifestyle", "Investment", "Salary", "Other"]
+        .map((textContent, index) => ({ textContent, value: String(index) }));
+    select.selectedIndex = 0;
+    select.dispatchEvent = event => { select.lastEvent = event.type; };
+    select.setAttribute("aria-label", "Category for Example Shop");
+    document.body.appendChild(select);
+    const { CategoryMenu } = dashboard();
+    const menu = new CategoryMenu(document);
+    const button = menu.enhance(select);
+    const key = (key, extra = {}) => button.onkeydown({ key, preventDefault() {}, ...extra });
+    return { menu, button, select, listeners, key };
+}
+
+test("category menu previews keyboard choices, Escape cancels, and Enter commits", () => {
+    const { menu, button, select, key } = categoryMenu();
+    assert.equal(select.hidden, true);
+    assert.equal(button.textContent, "Uncategorized");
+    assert.equal(button.getAttribute("role"), "combobox");
+    key("ArrowDown");
+    assert.equal(button.getAttribute("aria-expanded"), "true");
+    assert.equal(menu.activeIndex, 0);
+    key("ArrowDown");
+    assert.equal(menu.activeIndex, 1);
+    assert.equal(select.selectedIndex, 0);
+    key("Escape");
+    assert.equal(button.textContent, "Uncategorized");
+    assert.equal(button.getAttribute("aria-activedescendant"), undefined);
+    key("End");
+    key("Enter");
+    assert.equal(select.selectedIndex, 5);
+    assert.equal(button.textContent, "Other");
+    assert.equal(select.lastEvent, "change");
+    assert.equal(menu.menu.hidden, true);
+});
+
+test("category menu supports typeahead, Tab, pointer selection, and safe option labels", () => {
+    const { menu, button, select, key } = categoryMenu();
+    key("l");
+    assert.equal(menu.activeIndex, 2);
+    key("Tab");
+    assert.equal(button.textContent, "Lifestyle");
+    select.options.push({ value: "custom", textContent: "Example <img src=x> category" });
+    button.onclick();
+    assert.equal(menu.items[6].textContent, "Example <img src=x> category");
+    assert.equal(menu.items[6].children.length, 0);
+    menu.items[6].onclick();
+    assert.equal(button.textContent, "Example <img src=x> category");
+    assert.equal(select.selectedIndex, 6);
+});
+
+test("category menu fits a narrow viewport and closes on outside click, scrolling, or resize", () => {
+    const { menu, button, listeners } = categoryMenu();
+    button.onclick();
+    assert.equal(menu.menu.style.width, "160px");
+    assert.equal(menu.menu.style.left, "200px");
+    assert.equal(menu.menu.style.top, "534px");
+    listeners.get("pointerdown")({ target: menu.items[0] });
+    assert.equal(menu.menu.hidden, false);
+    listeners.get("pointerdown")({ target: {} });
+    assert.equal(menu.menu.hidden, true);
+    button.onclick();
+    listeners.get("scroll")({ target: menu.menu });
+    assert.equal(menu.menu.hidden, false);
+    listeners.get("scroll")({ target: {} });
+    assert.equal(menu.menu.hidden, true);
+    button.onclick();
+    listeners.get("resize")();
+    assert.equal(menu.menu.hidden, true);
 });
 
 const TRANSACTIONS = [
@@ -191,6 +333,70 @@ test("transaction filters operate only on the supplied date-range rows", () => {
     filters.toggleSource("UPI");
     assert.deepEqual(filters.apply([TRANSACTIONS[1], TRANSACTIONS[2]]), []);
     assert.deepEqual(filters.apply([TRANSACTIONS[0], TRANSACTIONS[4]]).map(row => row.id), [1]);
+});
+
+const SORT_TRANSACTIONS = [
+    { id: 1, transaction_date: "2001-10-13T18:00:00", amount: "9.50", transaction_type: "debit", source: "UPI" },
+    { id: 2, transaction_date: "2001-10-13T09:15:00", amount: "100.00", transaction_type: "credit", source: "Credit" },
+    { id: 3, transaction_date: "2001-10-12T23:59:59", amount: "20.05", transaction_type: "debit", source: "UPI" },
+    { id: 4, transaction_date: "2001-10-11T00:00:00", amount: "20.05", transaction_type: "debit", source: "Debit card" },
+];
+
+test("transaction sorting preserves the server order until a header is clicked", () => {
+    const { TransactionSort } = dashboard();
+    const sort = new TransactionSort();
+    const customOrder = [SORT_TRANSACTIONS[2], SORT_TRANSACTIONS[0], SORT_TRANSACTIONS[3]];
+    assert.deepEqual(sort.apply(customOrder).map(row => row.id), [3, 1, 4]);
+    assert.notEqual(sort.apply(customOrder), customOrder);
+    sort.toggle("merchant");
+    assert.equal(sort.field, null);
+});
+
+test("each sort field starts descending, toggles ascending, and resets when switching columns", () => {
+    const { TransactionSort } = dashboard();
+    const sort = new TransactionSort();
+    for (const [field, direction] of [
+        ["date", "desc"], ["date", "asc"], ["amount", "desc"],
+        ["amount", "asc"], ["date", "desc"], ["amount", "desc"],
+    ]) {
+        sort.toggle(field);
+        assert.equal(sort.field, field);
+        assert.equal(sort.direction, direction);
+    }
+});
+
+test("amount sorting compares numeric values and keeps equal amounts in their existing order", () => {
+    const { TransactionSort } = dashboard();
+    const sort = new TransactionSort();
+    sort.toggle("amount");
+    assert.deepEqual(sort.apply(SORT_TRANSACTIONS).map(row => row.id), [2, 3, 4, 1]);
+    sort.toggle("amount");
+    assert.deepEqual(sort.apply(SORT_TRANSACTIONS).map(row => row.id), [1, 3, 4, 2]);
+    assert.deepEqual(SORT_TRANSACTIONS.map(row => row.id), [1, 2, 3, 4]);
+});
+
+test("date sorting includes the stored clock time and preserves date ordering across offsets", () => {
+    const { TransactionSort } = dashboard();
+    const sort = new TransactionSort();
+    const rows = [...SORT_TRANSACTIONS, {
+        id: 5, transaction_date: "2001-10-14T00:10:00+05:30", amount: "0",
+    }];
+    sort.toggle("date");
+    assert.deepEqual(sort.apply(rows).map(row => row.id), [5, 1, 2, 3, 4]);
+    sort.toggle("date");
+    assert.deepEqual(sort.apply(rows).map(row => row.id), [4, 3, 2, 1, 5]);
+});
+
+test("sorting applies to the filtered rows and remains selected across new data or empty results", () => {
+    const { TransactionSort, TransactionFilters } = dashboard();
+    const sort = new TransactionSort(), filters = new TransactionFilters();
+    filters.toggleType("debit");
+    sort.toggle("amount");
+    sort.toggle("amount");
+    assert.deepEqual(sort.apply(filters.apply(SORT_TRANSACTIONS)).map(row => row.id), [1, 3, 4]);
+    assert.deepEqual(Array.from(sort.apply([])), []);
+    assert.deepEqual(sort.apply([SORT_TRANSACTIONS[1], SORT_TRANSACTIONS[0]]).map(row => row.id), [1, 2]);
+    assert.equal(sort.direction, "asc");
 });
 
 test("available years are sorted and current year/month are selected by default", () => {

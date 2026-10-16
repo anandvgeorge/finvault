@@ -3,122 +3,283 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#12140f">
     <title>FinVault</title>
     <style>
+        :root {
+            color-scheme: dark;
+            --canvas: #12140f;
+            --panel: #1b1e17;
+            --raised: #24281e;
+            --border: #3d4432;
+            --ink: #efeedf;
+            --muted: #a4ad96;
+            --yellow: #e5c15b;
+            --yellow-ink: #1d1b11;
+            --credit: #abd0af;
+            --debit: #dfad99;
+            --credit-row: #1c2821;
+            --debit-row: #2a211d;
+            --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        }
+        * { box-sizing: border-box; }
+        html { background: var(--canvas); scroll-padding-top: 20px; }
         body {
-            font-family: Arial, sans-serif;
-            color: #172033;
-            max-width: 1200px;
-            margin: 40px auto;
-            padding: 0 20px;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            color: var(--ink);
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 28px 32px 60px;
+            background-image: radial-gradient(#e5c15b0a 1px, transparent 1px);
+            background-size: 22px 22px;
+            line-height: 1.5;
         }
+        ::selection { background: var(--yellow); color: var(--yellow-ink); }
+        a { color: inherit; }
         button, select { font: inherit; }
-        button { cursor: pointer; }
-        button:disabled { cursor: wait; opacity: .6; }
-        button:focus-visible, select:focus-visible {
-            outline: 3px solid #93b4ff;
-            outline-offset: 3px;
+        button { cursor: pointer; touch-action: manipulation; }
+        button:disabled { cursor: default; opacity: .45; }
+        button:focus-visible, select:focus-visible, a:focus-visible {
+            outline: 2px solid var(--yellow);
+            outline-offset: 4px;
         }
-        .period-selector {
-            margin: 20px 0 28px;
-            padding: 18px;
-            border: 1px solid #dce2eb;
-            border-radius: 10px;
-            background: #f8fafc;
-        }
-        .period-row {
-            display: grid;
-            grid-template-columns: 82px minmax(0, 1fr);
+        .page-header {
+            display: flex;
             align-items: center;
-            gap: 14px;
-        }
-        .period-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
-        .period-toolbar .period-button { white-space: nowrap; }
-        .period-toolbar .period-help { flex: 1 1 260px; }
-        #all-periods { min-width: 82px; }
-        .period-help, .selection-label { margin: 0; color: #526078; font-size: 14px; }
-        .period-years { display: grid; gap: 10px; }
-        .period-button {
-            border: 1px solid #cbd4e1;
-            border-radius: 7px;
-            padding: 10px 12px;
-            background: white;
-            color: #334155;
-            min-height: 42px;
-        }
-        .period-button:hover { background: #edf2fb; }
-        .period-button[aria-pressed="true"] {
-            background: #2457c5;
-            border-color: #2457c5;
-            color: white;
-        }
-        .year-button { font-weight: bold; width: 100%; }
-        .month-buttons { position: relative; display: flex; gap: 7px; overflow-x: auto; padding: 3px; }
-        .month-buttons[hidden] { display: none; }
-        .month-buttons .period-button { flex: 1 0 46px; padding: 10px 8px; }
-        .selection-label { margin-top: 16px; line-height: 1.6; }
-        .selection-label strong { color: #172033; }
-        .data-status { min-height: 20px; color: #526078; font-size: 14px; }
-        .data-status:empty { display: none; }
-        .data-status.error { color: #a32c2c; }
-        .retry-button { margin-bottom: 16px; }
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            justify-content: space-between;
             gap: 20px;
+            padding-bottom: 22px;
+            margin-bottom: 28px;
+            border-bottom: 1px solid var(--border);
         }
-        .card { padding: 20px; border: 1px solid #ddd; border-radius: 10px; }
-        .card h3 { margin-top: 0; }
-        .card p { font-size: 24px; font-weight: bold; overflow-wrap: anywhere; }
-        .transactions { margin-top: 40px; }
-        .transactions h2 { margin-bottom: 8px; }
+        .brand { display: flex; align-items: center; gap: 14px; }
+        .brand-mark {
+            display: grid; place-items: center; width: 42px; height: 42px;
+            color: var(--yellow-ink); background: var(--yellow);
+            font: 800 25px var(--mono); box-shadow: 3px 3px 0 #080b07;
+        }
+        h1 { margin: 0; font: 700 27px/1.2 var(--mono); letter-spacing: -1px; }
+        .brand-caption { margin: 3px 0 0; color: var(--muted); font: 10px/1.4 var(--mono); letter-spacing: 2px; text-transform: uppercase; }
+        .page-nav { display: flex; gap: 20px; font: 11px var(--mono); text-transform: uppercase; letter-spacing: .7px; }
+        .page-nav a { text-decoration: none; color: var(--muted); padding: 10px 0; }
+        .page-nav a:hover { color: var(--yellow); }
         .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-        .section-heading h2 { margin: 0; }
-        .visibility-toggle {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            flex: 0 0 auto;
-            width: 40px;
-            height: 40px;
-            border: 1px solid #cbd4e1;
-            border-radius: 8px;
-            background: white;
-            color: #526078;
+        .section-heading h2 { margin: 0; font: 600 18px var(--mono); letter-spacing: -.4px; }
+        .section-heading h2::before { content: "/"; color: var(--yellow); margin-right: 10px; }
+        .period-selector {
+            margin: 0 0 24px;
+            padding: 18px 20px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--panel);
+            box-shadow: 4px 4px 0 #090c08;
         }
-        .visibility-toggle:hover { background: #edf2fb; }
-        .visibility-toggle[data-hidden="true"] { color: #2457c5; background: #edf2fb; }
-        .visibility-toggle svg { width: 21px; height: 21px; }
+        .period-row { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 12px; }
+        .period-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-bottom: 14px; margin-bottom: 12px; border-bottom: 1px dashed var(--border); }
+        .period-toolbar .period-button { white-space: nowrap; }
+        .period-toolbar .period-help { flex: 1 1 300px; margin-left: 8px; }
+        #all-periods { min-width: 74px; }
+        .period-help, .selection-label { margin: 0; color: var(--muted); font-size: 12px; }
+        .period-years { display: grid; gap: 4px; }
+        .period-button {
+            min-height: 40px;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            background: #151911;
+            color: #c3cbb7;
+            font: 500 12px/1.4 var(--mono);
+        }
+        .period-button:hover { border-color: #777b4f; background: #2b2e20; color: var(--ink); }
+        .period-button[aria-pressed="true"] { background: var(--yellow); border-color: var(--yellow); color: var(--yellow-ink); font-weight: 700; box-shadow: 2px 2px 0 #080b07; }
+        .year-button { font-weight: 600; width: 100%; }
+        .month-buttons { position: relative; display: flex; gap: 5px; overflow-x: auto; padding: 4px 3px; scrollbar-width: thin; scrollbar-color: #62683e transparent; }
+        .month-buttons[hidden] { display: none; }
+        .month-buttons .period-button { flex: 1 0 44px; padding: 8px 6px; }
+        .selection-label { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); font-family: var(--mono); line-height: 1.7; overflow-wrap: anywhere; }
+        .selection-label strong { color: var(--yellow); font-weight: 500; }
+        .data-status { min-height: 20px; color: var(--muted); font-size: 13px; }
+        .data-status:empty { display: none; }
+        .data-status.error { color: var(--debit); }
+        .retry-button { margin-bottom: 16px; }
+        .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+        .card { padding: 20px 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); box-shadow: 3px 3px 0 #090c08; min-width: 0; }
+        .card h3 { margin: 0; min-height: 30px; color: var(--muted); font: 500 10px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .8px; }
+        .card p { margin: 14px 0 0; font: 600 clamp(17px, 1.8vw, 25px)/1.4 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.8px; overflow-wrap: anywhere; }
+        .card.debit-card { background: var(--debit-row); border-left: 3px solid #91624f; }
+        .card.credit-card { background: var(--credit-row); border-left: 3px solid #739b7c; }
+        .card.cashflow-card { border-top: 2px solid var(--yellow); background: #242619; }
+        .credit-card p { color: var(--credit); }
+        .debit-card p { color: var(--debit); }
+        #net-cashflow[data-direction="positive"] { color: var(--credit); }
+        #net-cashflow[data-direction="negative"] { color: var(--debit); }
+        #net-cashflow[data-direction="hidden"] { color: var(--ink); }
+        .transactions { margin-top: 36px; }
+        .visibility-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel); color: var(--muted); }
+        .visibility-toggle:hover { border-color: var(--yellow); color: var(--yellow); }
+        .visibility-toggle[data-hidden="true"] { color: var(--yellow); background: #2b2b1c; }
+        .visibility-toggle svg { width: 20px; height: 20px; }
         .visibility-toggle .eye-slash { display: none; }
         .visibility-toggle[data-hidden="true"] .eye-slash { display: block; }
-        .transaction-count { margin: 0; color: #526078; font-size: 14px; }
-        .transaction-filters { display: flex; align-items: center; gap: 12px; overflow-x: auto; padding: 4px 3px; margin: 12px 0; }
-        .transaction-types, .debit-filters { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+        .transaction-count { margin: 10px 0 14px; color: var(--muted); font: 11px var(--mono); }
+        .transaction-filters { display: flex; align-items: center; gap: 12px; overflow-x: auto; padding: 4px 3px 6px; margin: 10px 0; scrollbar-width: thin; scrollbar-color: #62683e transparent; }
+        .transaction-types, .debit-filters { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
         .transaction-filters .period-button { white-space: nowrap; }
-        .debit-filters { border-left: 1px solid #cbd4e1; padding-left: 14px; }
+        .debit-filters { border-left: 1px solid #777b59; padding-left: 14px; }
         .debit-filters[hidden] { display: none; }
-        .table-scroll { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
-        th { font-weight: bold; }
-        .table-message { padding: 30px 12px; color: #526078; text-align: center; }
-        select { padding: 6px; }
-        @media (max-width: 600px) {
-            body { margin: 24px auto; padding: 0 14px; }
-            .period-selector { padding: 12px; }
-            .period-row { grid-template-columns: 68px minmax(0, 1fr); gap: 8px; }
-            #all-periods { min-width: 68px; }
-            .cards { gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .card { padding: 14px; }
-            .card h3 { font-size: 15px; }
-            .card p { font-size: 21px; }
+        .table-scroll { border: 1px solid var(--border); border-radius: 4px; background: var(--panel); overflow-x: auto; box-shadow: 4px 4px 0 #090c08; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 13px 16px; border-bottom: 1px solid #383c2e; text-align: left; }
+        th { background: var(--raised); color: var(--muted); font: 500 10px var(--mono); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+        th.sortable { padding: 0; }
+        .sort-button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); font: inherit; letter-spacing: inherit; text-transform: inherit; }
+        th .sort-button { width: 100%; padding: 13px 16px; }
+        th:nth-child(3) .sort-button { justify-content: flex-end; }
+        .sort-button:hover, .sort-button[data-direction="desc"], .sort-button[data-direction="asc"] { color: var(--yellow); }
+        .sort-indicator { font-size: 13px; }
+        .mobile-sort { display: none; }
+        th:nth-child(3), .transaction-amount { text-align: right; }
+        td { vertical-align: middle; }
+        td.transaction-date, td.transaction-source { color: #b0b7a3; font-size: 12px; }
+        td.transaction-date { font-family: var(--mono); line-height: 1.425; white-space: nowrap; }
+        .transaction-time { display: block; margin-top: 3px; font-size: .9em; opacity: .65; }
+        td.transaction-merchant { font-family: var(--mono); font-weight: 500; max-width: 340px; overflow-wrap: anywhere; }
+        .transaction-amount { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+        tr[data-type="debit"] { background: var(--debit-row); }
+        tr[data-type="credit"] { background: var(--credit-row); }
+        tr[data-type="debit"] td:first-child { box-shadow: inset 3px 0 0 #91624f; }
+        tr[data-type="credit"] td:first-child { box-shadow: inset 3px 0 0 #739b7c; }
+        tr[data-type="debit"] .transaction-amount { color: var(--debit); }
+        tr[data-type="credit"] .transaction-amount { color: var(--credit); }
+        .transaction-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #ffffff12; border-radius: 3px; padding: 4px 7px; font: 11px var(--mono); text-transform: capitalize; white-space: nowrap; }
+        tr[data-type="debit"] .transaction-badge { color: var(--debit); background: #dfad990d; }
+        tr[data-type="credit"] .transaction-badge { color: var(--credit); background: #abd0af18; border-color: #58775f; font-weight: 600; }
+        .transaction-badge::before { font-size: 13px; }
+        tr[data-type="debit"] .transaction-badge::before { content: "−"; }
+        tr[data-type="credit"] .transaction-badge::before { content: "+"; }
+        .table-message { padding: 36px 16px; color: var(--muted); text-align: center; }
+        select, .category-trigger {
+            appearance: none;
+            max-width: 100%;
+            min-height: 34px;
+            padding: 7px 34px 7px 10px;
+            background-color: var(--canvas);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23e5c15b' stroke-width='2' stroke-linecap='square'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            color: var(--ink);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            box-shadow: 2px 2px 0 #090c08;
+            font: 500 12px/1.4 var(--mono);
+            cursor: pointer;
+            text-align: left;
+        }
+        select:hover, select:focus, .category-trigger:hover, .category-trigger[aria-expanded="true"] { border-color: var(--yellow); }
+        .category-trigger { min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .category-menu {
+            position: fixed;
+            z-index: 100;
+            padding: 4px;
+            overflow-y: auto;
+            background: var(--panel);
+            color: var(--ink);
+            border: 1px solid var(--yellow);
+            border-radius: 3px;
+            box-shadow: 4px 4px 0 #090c08;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) var(--panel);
+        }
+        .category-option { position: relative; min-height: 36px; padding: 9px 22px; border-radius: 2px; font: 500 12px/1.5 var(--mono); text-align: center; cursor: pointer; overflow-wrap: anywhere; }
+        .category-option[aria-selected="true"] { color: var(--yellow); }
+        .category-option[aria-selected="true"]::after { content: "✓"; position: absolute; right: 9px; }
+        .category-option[data-active="true"] { background: var(--yellow); color: var(--yellow-ink); }
+        select option { background: var(--panel); color: var(--ink); font-family: var(--mono); }
+        select option:checked { background: var(--yellow); color: var(--yellow-ink); }
+        @media (max-width: 1000px) and (min-width: 701px) {
+            body { padding: 24px 24px 48px; }
+            .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            th, td { padding: 10px 12px; }
+            th .sort-button { padding: 10px 12px; }
+        }
+        @media (max-width: 700px) {
+            body { padding: 20px 14px 40px; }
+            .page-header { padding-bottom: 18px; margin-bottom: 20px; gap: 12px; }
+            .brand { gap: 10px; }
+            .brand-mark { width: 34px; height: 36px; font-size: 22px; }
+            h1 { font-size: 22px; }
+            .brand-caption { font-size: 9px; letter-spacing: 1px; }
+            .page-nav { gap: 12px; font-size: 10px; letter-spacing: 0; }
+            .page-nav a:first-child { display: none; }
+            .section-heading { margin-bottom: 12px; }
+            .section-heading h2 { font-size: 16px; }
+            .period-selector { padding: 12px; margin-bottom: 20px; }
+            .period-toolbar { padding-bottom: 12px; margin-bottom: 10px; }
+            .period-toolbar .period-help { flex-basis: 100%; margin: 4px 0 0; font-size: 11px; }
+            .period-row { grid-template-columns: 58px minmax(0, 1fr); gap: 8px; }
+            .period-years { gap: 3px; }
+            #all-periods { min-width: 58px; }
+            .period-button { min-height: 44px; padding: 10px 12px; }
+            .month-buttons .period-button { flex: 0 0 44px; padding: 10px 6px; }
+            .selection-label { font-size: 11px; }
+            .cards { gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .card { padding: 16px 13px; }
+            .card h3 { min-height: auto; font-size: 9px; }
+            .card p { font-size: clamp(15px, 4.2vw, 23px); margin-top: 12px; letter-spacing: -.6px; }
+            .cashflow-card { grid-column: 1 / -1; }
+            .visibility-toggle { width: 44px; height: 44px; }
+            .transactions { margin-top: 28px; }
+            .transaction-filters { margin: 8px 0; }
+            .mobile-sort { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--muted); font: 11px var(--mono); }
+            .mobile-sort .sort-button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel); }
+            .table-scroll { overflow: visible; background: transparent; border: 0; box-shadow: none; }
+            table, tbody { display: block; width: 100%; }
+            thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+            thead .sort-button { visibility: hidden; }
+            tbody { display: grid; gap: 9px; }
+            tbody tr {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, .9fr);
+                grid-template-areas: "merchant amount" "date type" "source source" "category category";
+                align-items: start;
+                gap: 6px 12px;
+                padding: 14px;
+                border: 1px solid var(--border);
+                border-left: 3px solid var(--border);
+                border-radius: 4px;
+                box-shadow: 3px 3px 0 #090c08;
+                min-width: 0;
+            }
+            tbody tr[data-type="debit"] { border-left-color: #91624f; }
+            tbody tr[data-type="credit"] { border-left-color: #739b7c; }
+            tbody td { display: block; border: 0; padding: 0; min-width: 0; }
+            tbody tr[data-type] td:first-child { box-shadow: none; }
+            td.transaction-date { grid-area: date; font-size: 11px; align-self: center; }
+            td.transaction-merchant { grid-area: merchant; font-size: 14px; line-height: 1.5; }
+            td.transaction-amount { grid-area: amount; font-size: 15px; white-space: normal; overflow-wrap: anywhere; }
+            td.transaction-type { grid-area: type; justify-self: end; }
+            td.transaction-source { grid-area: source; font-size: 11px; }
+            td.transaction-category { grid-area: category; margin-top: 4px; padding-top: 9px; border-top: 1px solid #ffffff0d; }
+            .transaction-category select, .category-trigger { width: 100%; min-height: 44px; }
+            .category-option { min-height: 44px; padding-top: 13px; padding-bottom: 13px; }
+            tr.message-row { display: block; padding: 24px 16px; background: var(--panel); }
+            .table-message { padding: 0; }
         }
     </style>
 </head>
 <body>
-    <h1>FinVault</h1>
+    <header class="page-header">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">F</span>
+            <div><h1>FinVault</h1><p class="brand-caption">Personal finance</p></div>
+        </div>
+        <nav class="page-nav" aria-label="Dashboard sections">
+            <a href="#overview-heading">Overview</a>
+            <a href="#transactions-heading">Transactions</a>
+        </nav>
+    </header>
     <div class="section-heading">
-        <h2>Overview</h2>
+        <h2 id="overview-heading">Overview</h2>
         <button type="button" id="toggle-totals" class="visibility-toggle" aria-label="Hide totals" title="Hide totals" aria-controls="overview-cards" data-hidden="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
                 <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
@@ -139,11 +300,11 @@
     <p id="data-status" class="data-status" role="status" aria-live="polite">Loading dashboard…</p>
     <button type="button" id="retry" class="period-button retry-button" hidden>Try again</button>
     <div id="overview-cards" class="cards" aria-busy="true">
-        <div class="card"><h3>Debits</h3><p id="total-debits">—</p></div>
-        <div class="card"><h3>Credits</h3><p id="total-credits">—</p></div>
-        <div class="card"><h3>Net Cashflow</h3><p id="net-cashflow">—</p></div>
-        <div class="card"><h3>UPI Debits</h3><p id="upi-debits">—</p></div>
-        <div class="card"><h3>Credit Card Debits</h3><p id="credit-card-debits">—</p></div>
+        <div class="card debit-card"><h3>Debits</h3><p id="total-debits">—</p></div>
+        <div class="card credit-card"><h3>Credits</h3><p id="total-credits">—</p></div>
+        <div class="card cashflow-card"><h3>Net Cashflow</h3><p id="net-cashflow">—</p></div>
+        <div class="card debit-card"><h3>UPI Debits</h3><p id="upi-debits">—</p></div>
+        <div class="card debit-card"><h3>Credit Card Debits</h3><p id="credit-card-debits">—</p></div>
     </div>
     <section class="transactions" aria-labelledby="transactions-heading">
         <div class="section-heading">
@@ -167,11 +328,21 @@
                 <button type="button" id="filter-debit-card" class="period-button" aria-pressed="false" aria-controls="transactions-table">Debit card</button>
             </div>
         </div>
+        <div class="mobile-sort" role="group" aria-label="Sort transactions">
+            <span>Sort by</span>
+            <button type="button" class="sort-button" data-sort-field="date" aria-controls="transactions-table">Date <span class="sort-indicator" aria-hidden="true">↓</span></button>
+            <button type="button" class="sort-button" data-sort-field="amount" aria-controls="transactions-table">Amount <span class="sort-indicator" aria-hidden="true">↕</span></button>
+        </div>
         <p id="transaction-count" class="transaction-count" aria-live="polite"></p>
         <div class="table-scroll">
             <table aria-busy="true" id="transactions-table">
                 <thead>
-                    <tr><th scope="col">Date</th><th scope="col">Merchant</th><th scope="col">Amount</th><th scope="col">Type</th><th scope="col">Source</th><th scope="col">Category</th></tr>
+                    <tr>
+                        <th scope="col" id="date-sort-heading" class="sortable" aria-label="Date" aria-sort="descending"><button type="button" class="sort-button" data-sort-field="date" aria-controls="transactions-table">Date <span class="sort-indicator" aria-hidden="true">↓</span></button></th>
+                        <th scope="col">Merchant</th>
+                        <th scope="col" id="amount-sort-heading" class="sortable" aria-label="Amount" aria-sort="none"><button type="button" class="sort-button" data-sort-field="amount" aria-controls="transactions-table">Amount <span class="sort-indicator" aria-hidden="true">↕</span></button></th>
+                        <th scope="col">Type</th><th scope="col">Source</th><th scope="col">Category</th>
+                    </tr>
                 </thead>
                 <tbody id="transactions-body"></tbody>
             </table>
@@ -238,6 +409,22 @@
             }
         }
 
+        function renderTransactionDate(cell, timestamp) {
+            const display = cell.ownerDocument.createElement("time");
+            display.dateTime = timestamp;
+            display.textContent = timestamp.slice(0, 10);
+            // Keep the recorded date, clock time and offset together; do not convert to the browser's timezone.
+            const match = timestamp.match(/^\d{4}-\d{2}-\d{2}[T ](\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?(Z|[+-]\d{2}:\d{2})?$/);
+            if (match) {
+                const time = cell.ownerDocument.createElement("span");
+                time.className = "transaction-time";
+                const zone = match[2] === "Z" ? " UTC" : match[2] ? ` ${match[2]}` : "";
+                time.textContent = `${match[1]}${zone}`;
+                display.appendChild(time);
+            }
+            cell.replaceChildren(display);
+        }
+
         class AmountVisibility {
             constructor(button, label) {
                 this.button = button;
@@ -268,6 +455,10 @@
 
             render(element, amount) {
                 element.replaceChildren();
+                if (element.id === "net-cashflow") {
+                    element.dataset.direction = !this.visible ? "hidden"
+                        : Number(amount) > 0 ? "positive" : Number(amount) < 0 ? "negative" : "neutral";
+                }
                 if (this.visible) {
                     element.textContent = `₹${Number(amount).toLocaleString("en-IN")}`;
                 } else {
@@ -276,6 +467,136 @@
                     mask.setAttribute("role", "img");
                     mask.setAttribute("aria-label", "Amount hidden");
                     element.appendChild(mask);
+                }
+            }
+        }
+
+        class CategoryMenu {
+            constructor(document) {
+                this.document = document;
+                this.view = document.defaultView;
+                this.menu = document.createElement("div");
+                this.menu.id = "category-menu";
+                this.menu.className = "category-menu";
+                this.menu.setAttribute("role", "listbox");
+                this.menu.hidden = true;
+                document.body.appendChild(this.menu);
+                this.menu.onpointerdown = event => event.preventDefault();
+                document.addEventListener("pointerdown", event => {
+                    if (this.button && event.target !== this.button && !this.menu.contains(event.target)) this.close();
+                });
+                document.addEventListener("scroll", event => {
+                    if (!this.menu.contains(event.target)) this.close();
+                }, true);
+                this.view.addEventListener("resize", () => this.close());
+            }
+
+            enhance(select) {
+                const button = this.document.createElement("button");
+                button.type = "button";
+                button.className = "category-trigger";
+                button.textContent = select.options[select.selectedIndex].textContent;
+                button.setAttribute("role", "combobox");
+                button.setAttribute("aria-label", select.getAttribute("aria-label"));
+                button.setAttribute("aria-haspopup", "listbox");
+                button.setAttribute("aria-controls", this.menu.id);
+                button.setAttribute("aria-expanded", "false");
+                button.onclick = () => this.button === button ? this.close() : this.open(select, button);
+                button.onkeydown = event => this.keydown(event, select, button);
+                button.onblur = () => { if (this.button === button) this.close(true); };
+                select.hidden = true;
+                select.parentNode.appendChild(button);
+                return button;
+            }
+
+            open(select, button) {
+                this.close();
+                this.select = select;
+                this.button = button;
+                this.search = "";
+                this.searchTime = 0;
+                this.menu.replaceChildren();
+                this.menu.setAttribute("aria-label", select.getAttribute("aria-label"));
+                this.items = Array.from(select.options, (option, index) => {
+                    const item = this.document.createElement("div");
+                    item.id = `${this.menu.id}-${index}`;
+                    item.className = "category-option";
+                    item.textContent = option.textContent;
+                    item.setAttribute("role", "option");
+                    item.setAttribute("aria-selected", String(index === select.selectedIndex));
+                    item.onpointermove = () => this.highlight(index);
+                    item.onclick = () => { this.highlight(index); this.close(true); button.focus(); };
+                    this.menu.appendChild(item);
+                    return item;
+                });
+                button.setAttribute("aria-expanded", "true");
+                this.menu.hidden = false;
+                const rect = button.getBoundingClientRect();
+                const width = Math.min(rect.width, this.view.innerWidth - 16);
+                const below = this.view.innerHeight - rect.bottom - 14;
+                const above = rect.top - 14;
+                const down = below >= Math.min(this.menu.scrollHeight, 280) || below >= above;
+                this.menu.style.width = `${width}px`;
+                this.menu.style.left = `${Math.max(8, Math.min(rect.left, this.view.innerWidth - width - 8))}px`;
+                this.menu.style.maxHeight = `${Math.max(0, Math.min(280, down ? below : above))}px`;
+                this.menu.style.top = `${down ? rect.bottom + 6 : rect.top - this.menu.getBoundingClientRect().height - 6}px`;
+                this.highlight(select.selectedIndex);
+            }
+
+            highlight(index) {
+                this.activeIndex = Math.max(0, Math.min(index, this.items.length - 1));
+                this.items.forEach((item, position) => { item.dataset.active = String(position === this.activeIndex); });
+                const active = this.items[this.activeIndex];
+                this.button.setAttribute("aria-activedescendant", active.id);
+                if (active.offsetTop < this.menu.scrollTop) this.menu.scrollTop = active.offsetTop;
+                else if (active.offsetTop + active.offsetHeight > this.menu.scrollTop + this.menu.clientHeight) {
+                    this.menu.scrollTop = active.offsetTop + active.offsetHeight - this.menu.clientHeight;
+                }
+            }
+
+            close(commit = false) {
+                if (!this.button) return;
+                if (commit) {
+                    this.select.selectedIndex = this.activeIndex;
+                    this.button.textContent = this.select.options[this.activeIndex].textContent;
+                    this.select.dispatchEvent(new this.view.Event("change", { bubbles: true }));
+                }
+                this.button.setAttribute("aria-expanded", "false");
+                this.button.removeAttribute("aria-activedescendant");
+                this.menu.hidden = true;
+                this.menu.replaceChildren();
+                this.button = this.select = null;
+            }
+
+            keydown(event, select, button) {
+                const open = this.button === button;
+                const key = event.key;
+                if (key === "Escape") {
+                    if (open) { event.preventDefault(); this.close(); }
+                    return;
+                }
+                if (key === "Tab") { if (open) this.close(true); return; }
+                if (["Enter", " ", "ArrowDown", "ArrowUp", "Home", "End", "PageUp", "PageDown"].includes(key)) {
+                    event.preventDefault();
+                    if (!open) this.open(select, button);
+                    else if (key === "Enter" || key === " " || (event.altKey && key === "ArrowUp")) { this.close(true); return; }
+                    if (key === "Home" || (!open && key === "ArrowUp")) this.highlight(0);
+                    else if (key === "End") this.highlight(this.items.length - 1);
+                    else if (open && key.startsWith("Arrow")) this.highlight(this.activeIndex + (key === "ArrowDown" ? 1 : -1));
+                    else if (key === "PageDown" || key === "PageUp") this.highlight(this.activeIndex + (key === "PageDown" ? 10 : -10));
+                } else if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    event.preventDefault();
+                    if (!open) this.open(select, button);
+                    const now = Date.now();
+                    this.search = now - this.searchTime < 700 ? this.search + key.toLowerCase() : key.toLowerCase();
+                    this.searchTime = now;
+                    const repeated = [...this.search].every(character => character === this.search[0]);
+                    const query = repeated ? this.search[0] : this.search;
+                    const start = repeated ? this.activeIndex + 1 : 0;
+                    for (let offset = 0; offset < this.items.length; offset++) {
+                        const index = (start + offset) % this.items.length;
+                        if (this.items[index].textContent.toLowerCase().startsWith(query)) { this.highlight(index); break; }
+                    }
                 }
             }
         }
@@ -303,6 +624,32 @@
                     (!this.type || transaction.transaction_type === this.type) &&
                     (this.type !== "debit" || !this.sources.size || this.sources.has(transaction.source))
                 );
+            }
+        }
+
+        class TransactionSort {
+            constructor() {
+                this.field = null;
+                this.direction = "desc";
+            }
+
+            toggle(field) {
+                if (!["date", "amount"].includes(field)) return;
+                this.direction = this.field === field && this.direction === "desc" ? "asc" : "desc";
+                this.field = field;
+            }
+
+            apply(transactions) {
+                const rows = transactions.slice();
+                if (!this.field) return rows;
+                const direction = this.direction === "desc" ? -1 : 1;
+                return rows.sort((left, right) => {
+                    if (this.field === "amount") return direction * (Number(left.amount) - Number(right.amount));
+                    // Match the API's ordering of the stored timestamps and the dates shown in the table.
+                    const a = left.transaction_date;
+                    const b = right.transaction_date;
+                    return direction * (a < b ? -1 : a > b ? 1 : 0);
+                });
             }
         }
 
@@ -365,14 +712,19 @@
                 ["Credit card", document.getElementById("filter-credit-card")],
             ]);
             const transactionFilters = new TransactionFilters();
+            const transactionSort = new TransactionSort();
+            const sortButtons = document.querySelectorAll("[data-sort-field]");
+            const categoryMenu = new CategoryMenu(document);
             let loadedTransactions = null;
             const cardFields = ["total-debits", "total-credits", "net-cashflow", "upi-debits", "credit-card-debits"];
             const yearRows = new Map();
             let selection;
 
             function tableMessage(message) {
+                categoryMenu.close();
                 transactionVisibility.clear();
                 const row = document.createElement("tr");
+                row.className = "message-row";
                 const cell = document.createElement("td");
                 cell.colSpan = 6;
                 cell.className = "table-message";
@@ -382,7 +734,8 @@
             }
 
             function renderTransactions(allTransactions) {
-                const transactions = transactionFilters.apply(allTransactions);
+                categoryMenu.close();
+                const transactions = transactionSort.apply(transactionFilters.apply(allTransactions));
                 transactionVisibility.clear();
                 tbody.replaceChildren();
                 count.textContent = transactions.length === allTransactions.length
@@ -395,15 +748,27 @@
                 const fragment = document.createDocumentFragment();
                 for (const transaction of transactions) {
                     const row = document.createElement("tr");
-                    const values = [transaction.transaction_date.slice(0, 10), transaction.merchant,
+                    row.dataset.id = transaction.id;
+                    row.dataset.type = transaction.transaction_type;
+                    const values = [transaction.transaction_date, transaction.merchant,
                         transaction.amount, transaction.transaction_type, transaction.source];
+                    const columns = ["date", "merchant", "amount", "type", "source"];
                     for (const [index, value] of values.entries()) {
                         const cell = document.createElement("td");
-                        if (index === 2) transactionVisibility.set(cell, value);
+                        cell.className = `transaction-${columns[index]}`;
+                        if (index === 0) renderTransactionDate(cell, value);
+                        else if (index === 2) transactionVisibility.set(cell, value);
+                        else if (index === 3) {
+                            const badge = document.createElement("span");
+                            badge.className = "transaction-badge";
+                            badge.textContent = value;
+                            cell.appendChild(badge);
+                        }
                         else cell.textContent = value;
                         row.appendChild(cell);
                     }
                     const cell = document.createElement("td");
+                    cell.className = "transaction-category";
                     const category = document.createElement("select");
                     category.setAttribute("aria-label", `Category for ${transaction.merchant} on ${transaction.transaction_date.slice(0, 10)}`);
                     const options = [["", "Uncategorized"], ["necessary", "Necessary"], ["lifestyle", "Lifestyle"],
@@ -419,6 +784,7 @@
                     }
                     category.value = transaction.category || "";
                     cell.appendChild(category);
+                    categoryMenu.enhance(category);
                     row.appendChild(cell);
                     fragment.appendChild(row);
                 }
@@ -443,6 +809,40 @@
                 button.onclick = () => { transactionFilters.toggleSource(source); refreshTransactionFilters(); };
             }
 
+            function refreshSortControls() {
+                const activeField = transactionSort.field || "date";
+                for (const button of sortButtons) {
+                    const field = button.dataset.sortField;
+                    const current = activeField === field ? transactionSort.direction : "none";
+                    const next = transactionSort.field === field && transactionSort.direction === "desc" ? "ascending" : "descending";
+                    const label = field === "date" ? "Date" : "Amount";
+                    button.dataset.direction = current;
+                    button.querySelector(".sort-indicator").textContent = current === "desc" ? "↓" : current === "asc" ? "↑" : "↕";
+                    button.setAttribute("aria-label", `${label}${current === "none" ? "" : `, ${current === "desc" ? "descending" : "ascending"}`}. Sort ${next}`);
+                    button.title = `Sort by ${field} ${next}`;
+                }
+                for (const field of ["date", "amount"]) {
+                    document.getElementById(`${field}-sort-heading`).setAttribute("aria-sort",
+                        activeField !== field ? "none" : transactionSort.direction === "desc" ? "descending" : "ascending");
+                }
+            }
+
+            for (const button of sortButtons) {
+                button.onclick = () => {
+                    transactionSort.toggle(button.dataset.sortField);
+                    refreshSortControls();
+                    categoryMenu.close();
+                    if (loadedTransactions !== null) {
+                        // Move existing rows so sorting preserves category choices and masked amounts.
+                        const rows = new Map(Array.from(tbody.children, row => [row.dataset.id, row]));
+                        for (const transaction of transactionSort.apply(transactionFilters.apply(loadedTransactions))) {
+                            tbody.appendChild(rows.get(String(transaction.id)));
+                        }
+                    }
+                };
+            }
+            refreshSortControls();
+
             const loader = new DashboardLoader(fetchJSON, result => {
                 const loading = result.status === "loading";
                 cards.setAttribute("aria-busy", String(loading));
@@ -460,6 +860,7 @@
                     loadedTransactions = null;
                     totalsVisibility.clear();
                     for (const field of cardFields) document.getElementById(field).textContent = "—";
+                    delete document.getElementById("net-cashflow").dataset.direction;
                     count.textContent = "";
                     tableMessage(loading ? "Loading transactions…" : "Unable to load transactions.");
                     status.textContent = loading ? "Loading selected data…" : "Couldn’t load this selection. Try again.";
