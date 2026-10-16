@@ -1,194 +1,404 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FinVault</title>
-
-<style>
-    body {
-        font-family: Arial, sans-serif;
-        max-width: 1200px;
-        margin: 40px auto;
-        padding: 0 20px;
-    }
-
-    .period-selector {
-        margin: 20px 0 30px;
-    }
-
-    .cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 20px;
-    }
-
-    .card {
-        padding: 20px;
-        border: 1px solid #ddd;
-        border-radius: 10px;
-    }
-
-    .card h3 {
-        margin-top: 0;
-    }
-
-    .card p {
-        font-size: 24px;
-        font-weight: bold;
-    }
-
-    .transactions {
-        margin-top: 50px;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 20px;
-    }
-
-    th,
-    td {
-        padding: 12px;
-        border-bottom: 1px solid #ddd;
-        text-align: left;
-    }
-
-    th {
-        font-weight: bold;
-    }
-
-    select {
-        padding: 6px;
-    }
-</style>
-
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            color: #172033;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        button, select { font: inherit; }
+        button { cursor: pointer; }
+        button:disabled { cursor: wait; opacity: .6; }
+        button:focus-visible, select:focus-visible {
+            outline: 3px solid #93b4ff;
+            outline-offset: 3px;
+        }
+        .period-selector {
+            margin: 20px 0 28px;
+            padding: 18px;
+            border: 1px solid #dce2eb;
+            border-radius: 10px;
+            background: #f8fafc;
+        }
+        .period-row {
+            display: grid;
+            grid-template-columns: 82px minmax(0, 1fr);
+            align-items: center;
+            gap: 14px;
+        }
+        .period-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .period-toolbar .period-button { white-space: nowrap; }
+        .period-toolbar .period-help { flex: 1 1 260px; }
+        #all-periods { min-width: 82px; }
+        .period-help, .selection-label { margin: 0; color: #526078; font-size: 14px; }
+        .period-years { display: grid; gap: 10px; }
+        .period-button {
+            border: 1px solid #cbd4e1;
+            border-radius: 7px;
+            padding: 10px 12px;
+            background: white;
+            color: #334155;
+            min-height: 42px;
+        }
+        .period-button:hover { background: #edf2fb; }
+        .period-button[aria-pressed="true"] {
+            background: #2457c5;
+            border-color: #2457c5;
+            color: white;
+        }
+        .year-button { font-weight: bold; width: 100%; }
+        .month-buttons { position: relative; display: flex; gap: 7px; overflow-x: auto; padding: 3px; }
+        .month-buttons[hidden] { display: none; }
+        .month-buttons .period-button { flex: 1 0 46px; padding: 10px 8px; }
+        .selection-label { margin-top: 16px; line-height: 1.6; }
+        .selection-label strong { color: #172033; }
+        .data-status { min-height: 20px; color: #526078; font-size: 14px; }
+        .data-status:empty { display: none; }
+        .data-status.error { color: #a32c2c; }
+        .retry-button { margin-bottom: 16px; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+        }
+        .card { padding: 20px; border: 1px solid #ddd; border-radius: 10px; }
+        .card h3 { margin-top: 0; }
+        .card p { font-size: 24px; font-weight: bold; overflow-wrap: anywhere; }
+        .transactions { margin-top: 40px; }
+        .transactions h2 { margin-bottom: 8px; }
+        .transaction-count { margin: 0; color: #526078; font-size: 14px; }
+        .table-scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { font-weight: bold; }
+        .table-message { padding: 30px 12px; color: #526078; text-align: center; }
+        select { padding: 6px; }
+        @media (max-width: 600px) {
+            body { margin: 24px auto; padding: 0 14px; }
+            .period-selector { padding: 12px; }
+            .period-row { grid-template-columns: 68px minmax(0, 1fr); gap: 8px; }
+            #all-periods { min-width: 68px; }
+            .cards { gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .card { padding: 14px; }
+            .card h3 { font-size: 15px; }
+            .card p { font-size: 21px; }
+        }
+    </style>
 </head>
-
 <body>
     <h1>FinVault</h1>
-
-<h2>Overview</h2>
-
-<div class="period-selector">
-    <select id="period">
-        <option value="month">This Month</option>
-        <option value="year">This Year</option>
-        <option value="all">All Time</option>
-    </select>
-</div>
-
-<div class="cards">
-    <div class="card">
-        <h3>Debits</h3>
-        <p id="total-debits">-</p>
+    <h2>Overview</h2>
+    <section class="period-selector" aria-label="Filter by year and month">
+        <div class="period-toolbar">
+            <button type="button" id="all-periods" class="period-button" aria-pressed="false" disabled>All</button>
+            <button type="button" id="this-month" class="period-button" aria-pressed="false" disabled>This month</button>
+            <p class="period-help">Select years, then months. A year with no months selected includes the full year.</p>
+        </div>
+        <div id="period-years" class="period-years"></div>
+        <p class="selection-label">Showing: <strong id="selection-label">Loading calendar…</strong></p>
+    </section>
+    <p id="data-status" class="data-status" role="status" aria-live="polite">Loading dashboard…</p>
+    <button type="button" id="retry" class="period-button retry-button" hidden>Try again</button>
+    <div id="overview-cards" class="cards" aria-busy="true">
+        <div class="card"><h3>Debits</h3><p id="total-debits">—</p></div>
+        <div class="card"><h3>Credits</h3><p id="total-credits">—</p></div>
+        <div class="card"><h3>Net Cashflow</h3><p id="net-cashflow">—</p></div>
+        <div class="card"><h3>UPI Debits</h3><p id="upi-debits">—</p></div>
+        <div class="card"><h3>Credit Card Debits</h3><p id="credit-card-debits">—</p></div>
     </div>
+    <section class="transactions" aria-labelledby="transactions-heading">
+        <h2 id="transactions-heading">Transactions</h2>
+        <p id="transaction-count" class="transaction-count"></p>
+        <div class="table-scroll">
+            <table aria-busy="true" id="transactions-table">
+                <thead>
+                    <tr><th scope="col">Date</th><th scope="col">Merchant</th><th scope="col">Amount</th><th scope="col">Type</th><th scope="col">Source</th><th scope="col">Category</th></tr>
+                </thead>
+                <tbody id="transactions-body"></tbody>
+            </table>
+        </div>
+    </section>
+    <script id="dashboard-script">
+        "use strict";
 
-    <div class="card">
-        <h3>Credits</h3>
-        <p id="total-credits">-</p>
-    </div>
+        const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-    <div class="card">
-        <h3>Net Cashflow</h3>
-        <p id="net-cashflow">-</p>
-    </div>
+        class PeriodSelection {
+            constructor(years, now = new Date()) {
+                this.years = [...new Set(years)].sort((a, b) => b - a);
+                this.selected = new Map();
+                this.selectThisMonth(now);
+            }
 
-    <div class="card">
-        <h3>UPI Debits</h3>
-        <p id="upi-debits">-</p>
-    </div>
+            selectThisMonth(now = new Date()) {
+                if (!this.years.includes(now.getFullYear())) return false;
+                this.selected.clear();
+                this.selected.set(now.getFullYear(), new Set([now.getMonth() + 1]));
+                return true;
+            }
 
-    <div class="card">
-        <h3>Credit Card Debits</h3>
-        <p id="credit-card-debits">-</p>
-    </div>
-</div>
+            isThisMonth(now = new Date()) {
+                const months = this.selected.get(now.getFullYear());
+                return this.selected.size === 1 && months?.size === 1 && months.has(now.getMonth() + 1);
+            }
 
-<div class="transactions">
-    <h2>Transactions</h2>
+            toggleYear(year) {
+                if (!this.years.includes(year)) return;
+                if (this.selected.has(year)) this.selected.delete(year);
+                else this.selected.set(year, new Set());
+            }
 
-    <table>
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Merchant</th>
-                <th>Amount</th>
-                <th>Type</th>
-                <th>Source</th>
-                <th>Category</th>
-            </tr>
-        </thead>
+            toggleMonth(year, month) {
+                const months = this.selected.get(year);
+                if (!months || month < 1 || month > 12) return;
+                if (months.has(month)) months.delete(month);
+                else months.add(month);
+            }
 
-        <tbody id="transactions-body">
-        </tbody>
-    </table>
-</div>
+            clear() { this.selected.clear(); }
 
-<script>
-    async function loadOverview() {
-        const period = document.getElementById("period").value;
+            query() {
+                const parameters = new URLSearchParams();
+                for (const year of this.years) {
+                    if (!this.selected.has(year)) continue;
+                    parameters.append("years", year);
+                    for (const month of [...this.selected.get(year)].sort((a, b) => a - b)) {
+                        parameters.append("months", `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`);
+                    }
+                }
+                return parameters.toString();
+            }
 
-        const response = await fetch(`/overview?period=${period}`);
-        const data = await response.json();
-
-        document.getElementById("total-debits").textContent =
-            `₹${data.total_debits.toLocaleString("en-IN")}`;
-
-        document.getElementById("total-credits").textContent =
-            `₹${data.total_credits.toLocaleString("en-IN")}`;
-
-        document.getElementById("net-cashflow").textContent =
-            `₹${data.net_cashflow.toLocaleString("en-IN")}`;
-
-        document.getElementById("upi-debits").textContent =
-            `₹${data.upi_debits.toLocaleString("en-IN")}`;
-
-        document.getElementById("credit-card-debits").textContent =
-            `₹${data.credit_card_debits.toLocaleString("en-IN")}`;
-    }
-
-    async function loadTransactions() {
-        const response = await fetch("/transactions");
-        const transactions = await response.json();
-
-        const tbody = document.getElementById("transactions-body");
-
-        tbody.innerHTML = "";
-
-        for (const transaction of transactions) {
-            const row = document.createElement("tr");
-
-            row.innerHTML = `
-                <td>${transaction.transaction_date.slice(0, 10)}</td>
-                <td>${transaction.merchant}</td>
-                <td>₹${Number(transaction.amount).toLocaleString("en-IN")}</td>
-                <td>${transaction.transaction_type}</td>
-                <td>${transaction.source}</td>
-                <td>
-                    <select>
-                        <option value="">Uncategorized</option>
-                        <option value="necessary">Necessary</option>
-                        <option value="lifestyle">Lifestyle</option>
-                        <option value="investment">Investment</option>
-                        <option value="salary">Salary</option>
-                        <option value="other">Other</option>
-                    </select>
-                </td>
-            `;
-
-            tbody.appendChild(row);
+            label() {
+                if (!this.selected.size) return "All time";
+                return this.years.filter(year => this.selected.has(year)).map(year => {
+                    const months = [...this.selected.get(year)].sort((a, b) => a - b);
+                    return `${year}: ${months.length ? months.map(month => MONTHS[month - 1]).join(", ") : "Full year"}`;
+                }).join(" · ");
+            }
         }
-    }
 
-    document.getElementById("period").addEventListener(
-        "change",
-        loadOverview
-    );
+        async function fetchJSON(url, signal) {
+            const response = await fetch(url, { signal });
+            if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+            return response.json();
+        }
 
-    loadOverview();
-    loadTransactions();
-</script>
+        class DashboardLoader {
+            constructor(fetcher, onChange) {
+                this.fetcher = fetcher;
+                this.onChange = onChange;
+                this.version = 0;
+                this.controller = null;
+            }
 
+            async load(query) {
+                if (this.controller) this.controller.abort();
+                const controller = new AbortController();
+                this.controller = controller;
+                const version = ++this.version;
+                this.onChange({ status: "loading" });
+                const suffix = query ? `?${query}` : "";
+                try {
+                    const [overview, transactions] = await Promise.all([
+                        this.fetcher(`/overview${suffix}`, controller.signal),
+                        this.fetcher(`/transactions${suffix}`, controller.signal),
+                    ]);
+                    if (version === this.version) this.onChange({ status: "ready", overview, transactions });
+                } catch (error) {
+                    if (version !== this.version) return;
+                    controller.abort();
+                    this.onChange({ status: "error" });
+                }
+            }
+        }
+
+        function initializeDashboard() {
+            const allButton = document.getElementById("all-periods");
+            const thisMonthButton = document.getElementById("this-month");
+            const yearsContainer = document.getElementById("period-years");
+            const selectionLabel = document.getElementById("selection-label");
+            const status = document.getElementById("data-status");
+            const retry = document.getElementById("retry");
+            const cards = document.getElementById("overview-cards");
+            const table = document.getElementById("transactions-table");
+            const tbody = document.getElementById("transactions-body");
+            const count = document.getElementById("transaction-count");
+            const cardFields = ["total-debits", "total-credits", "net-cashflow", "upi-debits", "credit-card-debits"];
+            const yearRows = new Map();
+            let selection;
+
+            function tableMessage(message) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 6;
+                cell.className = "table-message";
+                cell.textContent = message;
+                row.appendChild(cell);
+                tbody.replaceChildren(row);
+            }
+
+            function renderTransactions(transactions) {
+                tbody.replaceChildren();
+                count.textContent = `${transactions.length.toLocaleString("en-IN")} transaction${transactions.length === 1 ? "" : "s"}`;
+                if (!transactions.length) {
+                    tableMessage("No transactions for this selection.");
+                    return;
+                }
+                const fragment = document.createDocumentFragment();
+                for (const transaction of transactions) {
+                    const row = document.createElement("tr");
+                    for (const value of [transaction.transaction_date.slice(0, 10), transaction.merchant,
+                        `₹${Number(transaction.amount).toLocaleString("en-IN")}`, transaction.transaction_type, transaction.source]) {
+                        const cell = document.createElement("td");
+                        cell.textContent = value;
+                        row.appendChild(cell);
+                    }
+                    const cell = document.createElement("td");
+                    const category = document.createElement("select");
+                    category.setAttribute("aria-label", `Category for ${transaction.merchant} on ${transaction.transaction_date.slice(0, 10)}`);
+                    const options = [["", "Uncategorized"], ["necessary", "Necessary"], ["lifestyle", "Lifestyle"],
+                        ["investment", "Investment"], ["salary", "Salary"], ["other", "Other"]];
+                    if (transaction.category && !options.some(([value]) => value === transaction.category)) {
+                        options.push([transaction.category, transaction.category]);
+                    }
+                    for (const [value, label] of options) {
+                        const option = document.createElement("option");
+                        option.value = value;
+                        option.textContent = label;
+                        category.appendChild(option);
+                    }
+                    category.value = transaction.category || "";
+                    cell.appendChild(category);
+                    row.appendChild(cell);
+                    fragment.appendChild(row);
+                }
+                tbody.appendChild(fragment);
+            }
+
+            const loader = new DashboardLoader(fetchJSON, result => {
+                const loading = result.status === "loading";
+                cards.setAttribute("aria-busy", String(loading));
+                table.setAttribute("aria-busy", String(loading));
+                retry.hidden = result.status !== "error";
+                status.className = result.status === "error" ? "data-status error" : "data-status";
+                if (result.status === "ready") {
+                    for (const field of cardFields) {
+                        document.getElementById(field).textContent = `₹${result.overview[field.replaceAll("-", "_")].toLocaleString("en-IN")}`;
+                    }
+                    renderTransactions(result.transactions);
+                    status.textContent = "";
+                } else {
+                    for (const field of cardFields) document.getElementById(field).textContent = "—";
+                    count.textContent = "";
+                    tableMessage(loading ? "Loading transactions…" : "Unable to load transactions.");
+                    status.textContent = loading ? "Loading selected data…" : "Couldn’t load this selection. Try again.";
+                }
+            });
+
+            function refresh() {
+                allButton.setAttribute("aria-pressed", String(selection.selected.size === 0));
+                thisMonthButton.disabled = !selection.years.includes(new Date().getFullYear());
+                thisMonthButton.title = thisMonthButton.disabled ? "No transactions for the current year." : "";
+                thisMonthButton.setAttribute("aria-pressed", String(selection.isThisMonth()));
+                selectionLabel.textContent = selection.label();
+                for (const [year, controls] of yearRows) {
+                    const active = selection.selected.has(year);
+                    controls.button.setAttribute("aria-pressed", String(active));
+                    controls.button.setAttribute("aria-expanded", String(active));
+                    controls.months.hidden = !active;
+                    for (const [month, button] of controls.buttons) {
+                        button.setAttribute("aria-pressed", String(active && selection.selected.get(year).has(month)));
+                    }
+                }
+                retry.onclick = refresh;
+                return loader.load(selection.query());
+            }
+
+            function revealSelectedMonths() {
+                // Keep the selected month visible without scrolling the page.
+                for (const [year, months] of selection.selected) {
+                    const controls = yearRows.get(year);
+                    const button = controls.buttons.get([...months][0]);
+                    if (button) {
+                        controls.months.scrollLeft = button.offsetLeft - (controls.months.clientWidth - button.offsetWidth) / 2;
+                    }
+                }
+            }
+
+            async function loadYears() {
+                retry.hidden = true;
+                status.className = "data-status";
+                status.textContent = "Loading calendar…";
+                try {
+                    selection = new PeriodSelection(await fetchJSON("/years"));
+                    yearsContainer.replaceChildren();
+                    yearRows.clear();
+                    for (const year of selection.years) {
+                        const row = document.createElement("div");
+                        row.className = "period-row";
+                        const button = document.createElement("button");
+                        button.type = "button";
+                        button.className = "period-button year-button";
+                        button.textContent = year;
+                        button.setAttribute("aria-controls", `months-${year}`);
+                        button.onclick = () => { selection.toggleYear(year); refresh(); };
+                        const months = document.createElement("div");
+                        months.id = `months-${year}`;
+                        months.className = "month-buttons";
+                        months.setAttribute("role", "group");
+                        months.setAttribute("aria-label", `Months in ${year}`);
+                        const buttons = new Map();
+                        MONTHS.forEach((name, index) => {
+                            const monthButton = document.createElement("button");
+                            monthButton.type = "button";
+                            monthButton.className = "period-button";
+                            monthButton.textContent = name;
+                            monthButton.setAttribute("aria-label", `${MONTH_NAMES[index]} ${year}`);
+                            monthButton.onclick = () => { selection.toggleMonth(year, index + 1); refresh(); };
+                            months.appendChild(monthButton);
+                            buttons.set(index + 1, monthButton);
+                        });
+                        row.appendChild(button);
+                        row.appendChild(months);
+                        yearsContainer.appendChild(row);
+                        yearRows.set(year, { button, months, buttons });
+                    }
+                    allButton.disabled = false;
+                    allButton.onclick = () => { selection.clear(); refresh(); };
+                    thisMonthButton.onclick = () => {
+                        if (selection.selectThisMonth()) {
+                            const loading = refresh();
+                            revealSelectedMonths();
+                            return loading;
+                        }
+                    };
+                    const loading = refresh();
+                    revealSelectedMonths();
+                    await loading;
+                } catch (error) {
+                    cards.setAttribute("aria-busy", "false");
+                    table.setAttribute("aria-busy", "false");
+                    selectionLabel.textContent = "Calendar unavailable";
+                    status.className = "data-status error";
+                    status.textContent = "Couldn’t load the calendar. Try again.";
+                    tableMessage("Unable to load transactions.");
+                    retry.hidden = false;
+                    retry.onclick = loadYears;
+                }
+            }
+
+            return loadYears();
+        }
+
+        document.addEventListener("DOMContentLoaded", initializeDashboard);
+    </script>
 </body>
 </html>

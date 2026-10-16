@@ -59,6 +59,12 @@ Run the unit tests locally:
 uv run --locked python -m unittest discover -s tests -v
 ```
 
+Run dashboard selection and loading tests with Node.js (no npm install needed):
+
+```bash
+node --test tests/dashboard.test.cjs
+```
+
 [GitHub Actions CI](.github/workflows/ci.yml) runs the same tests on pushes and
 pull requests, and can be started manually from the Actions tab. It uses the
 Python version in `.python-version` and the dependencies in `uv.lock`. Tests use
