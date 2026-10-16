@@ -87,15 +87,21 @@ class Database:
         )
         return cursor.fetchone() is not None
     
-    def get_emails(self):
-        cursor = self.connection.execute(
+    def get_emails(self, *, unprocessed_only: bool = False):
+        """Optionally select only emails without a saved transaction."""
+        query = """
+            SELECT e.gmail_id, e.sender, e.subject, e.received_at,
+                e.body_html, e.body_text, e.label
+            FROM emails e
+        """
+        if unprocessed_only:
+            query += """
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM transactions t WHERE t.email_id = e.gmail_id
+                )
             """
-            SELECT gmail_id, sender, subject, received_at,
-                body_html, body_text, label
-            FROM emails
-            ORDER BY id
-            """
-        )
+        query += " ORDER BY e.id"
+        cursor = self.connection.execute(query)
 
         return [
             (

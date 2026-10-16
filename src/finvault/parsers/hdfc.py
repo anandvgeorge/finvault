@@ -340,9 +340,11 @@ class HDFCParser:
         match = re.search(
             r"Rs\.(?P<amount>\d+(?:\.\d+)?)\s+"
             r"has been successfully credited to your HDFC Bank account "
-            r"ending in\s+(?P<account>\S+).*?"
+            r"ending in\s+(?P<account>[Xx*\d]+).*?"
             r"Date:\s*(?P<date>\d{2}-\d{2}-\d{2}).*?"
-            r"Sender:\s*(?P<sender>.+?).*?"
+            # End the sender capture at the next field. A second wildcard here
+            # consumes the rest of the name after the first captured character.
+            r"Sender:\s*(?P<sender>\S.*?)\s+"
             r"UPI Reference No\.:\s*(?P<reference>\S+)",
             body,
             re.DOTALL,
@@ -353,7 +355,7 @@ class HDFCParser:
                 amount=Decimal(match.group("amount")),
                 currency="INR",
                 transaction_type="credit",
-                merchant=match.group("sender").strip(),
+                merchant=" ".join(match.group("sender").split()),
                 transaction_date=datetime.strptime(
                     match.group("date"),
                     "%d-%m-%y",
@@ -369,24 +371,34 @@ class HDFCParser:
             r"Amount received:\s*INR\s*(?P<amount>[\d,]+(?:\.\d+)?).*?"
             r"Account:\s*(?P<account>\S+).*?"
             r"Date:\s*(?P<date>\d{2}-[A-Z]{3}-\d{4}).*?"
-            r"Reference Details:\s*(?P<reference>\S+)",
+            r"Reference Details:\s*(?P<reference>[^\r\n]+)",
             body,
             re.DOTALL,
         )
 
         if match:
+            reference = match.group("reference").strip()
+            # This narration format contains the bank code, sender, recipient,
+            # and transfer reference. Other formats retain the generic label.
+            narration = re.fullmatch(
+                r"NEFT\s+Cr-[A-Z]{4}0[A-Z0-9]{6}-"
+                r"(?P<sender>[^-\r\n]+)-[^-\r\n]+-[^-\s]+",
+                reference,
+                re.IGNORECASE,
+            )
+            sender = " ".join(narration.group("sender").split()) if narration else ""
             return Transaction(
                 amount=Decimal(match.group("amount").replace(",", "")),
                 currency="INR",
                 transaction_type="credit",
-                merchant="NEFT",
+                merchant=sender or "NEFT",
                 transaction_date=datetime.strptime(
                     match.group("date"),
                     "%d-%b-%Y",
                 ),
                 account=f"HDFC {match.group('account')}",
                 source="Credit",
-                reference=match.group("reference"),
+                reference=reference,
                 email_id=email.gmail_id,
             )
 

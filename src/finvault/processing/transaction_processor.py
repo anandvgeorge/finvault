@@ -11,7 +11,7 @@ class TransactionProcessor:
         self.parser = HDFCParser()
 
     def process(self):
-        emails = self.database.get_emails()
+        emails = self.database.get_emails(unprocessed_only=True)
 
         parsed_count = 0
         failed_count = 0
