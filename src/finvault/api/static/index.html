@@ -72,6 +72,25 @@
         .card p { font-size: 24px; font-weight: bold; overflow-wrap: anywhere; }
         .transactions { margin-top: 40px; }
         .transactions h2 { margin-bottom: 8px; }
+        .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+        .section-heading h2 { margin: 0; }
+        .visibility-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            width: 40px;
+            height: 40px;
+            border: 1px solid #cbd4e1;
+            border-radius: 8px;
+            background: white;
+            color: #526078;
+        }
+        .visibility-toggle:hover { background: #edf2fb; }
+        .visibility-toggle[data-hidden="true"] { color: #2457c5; background: #edf2fb; }
+        .visibility-toggle svg { width: 21px; height: 21px; }
+        .visibility-toggle .eye-slash { display: none; }
+        .visibility-toggle[data-hidden="true"] .eye-slash { display: block; }
         .transaction-count { margin: 0; color: #526078; font-size: 14px; }
         .transaction-filters { display: flex; align-items: center; gap: 12px; overflow-x: auto; padding: 4px 3px; margin: 12px 0; }
         .transaction-types, .debit-filters { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
@@ -98,7 +117,16 @@
 </head>
 <body>
     <h1>FinVault</h1>
-    <h2>Overview</h2>
+    <div class="section-heading">
+        <h2>Overview</h2>
+        <button type="button" id="toggle-totals" class="visibility-toggle" aria-label="Hide totals" title="Hide totals" aria-controls="overview-cards" data-hidden="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                <circle cx="12" cy="12" r="3" />
+                <path class="eye-slash" d="M3 3 21 21" />
+            </svg>
+        </button>
+    </div>
     <section class="period-selector" aria-label="Filter by year and month">
         <div class="period-toolbar">
             <button type="button" id="all-periods" class="period-button" aria-pressed="false" disabled>All</button>
@@ -118,7 +146,16 @@
         <div class="card"><h3>Credit Card Debits</h3><p id="credit-card-debits">—</p></div>
     </div>
     <section class="transactions" aria-labelledby="transactions-heading">
-        <h2 id="transactions-heading">Transactions</h2>
+        <div class="section-heading">
+            <h2 id="transactions-heading">Transactions</h2>
+            <button type="button" id="toggle-transaction-amounts" class="visibility-toggle" aria-label="Hide transaction amounts" title="Hide transaction amounts" aria-controls="transactions-table" data-hidden="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                    <path class="eye-slash" d="M3 3 21 21" />
+                </svg>
+            </button>
+        </div>
         <div class="transaction-filters" aria-label="Transaction filters">
             <div class="transaction-types" role="group" aria-label="Transaction type">
                 <button type="button" id="filter-debit" class="period-button" aria-pressed="false" aria-controls="transactions-table">Debit</button>
@@ -201,6 +238,48 @@
             }
         }
 
+        class AmountVisibility {
+            constructor(button, label) {
+                this.button = button;
+                this.label = label;
+                this.visible = true;
+                this.amounts = new Map();
+                button.onclick = () => {
+                    this.visible = !this.visible;
+                    this.updateButton();
+                    for (const [element, amount] of this.amounts) this.render(element, amount);
+                };
+                this.updateButton();
+            }
+
+            updateButton() {
+                const action = `${this.visible ? "Hide" : "Show"} ${this.label}`;
+                this.button.setAttribute("aria-label", action);
+                this.button.title = action;
+                this.button.dataset.hidden = String(!this.visible);
+            }
+
+            set(element, amount) {
+                this.amounts.set(element, amount);
+                this.render(element, amount);
+            }
+
+            clear() { this.amounts.clear(); }
+
+            render(element, amount) {
+                element.replaceChildren();
+                if (this.visible) {
+                    element.textContent = `₹${Number(amount).toLocaleString("en-IN")}`;
+                } else {
+                    const mask = element.ownerDocument.createElement("span");
+                    mask.textContent = "••••";
+                    mask.setAttribute("role", "img");
+                    mask.setAttribute("aria-label", "Amount hidden");
+                    element.appendChild(mask);
+                }
+            }
+        }
+
         class TransactionFilters {
             constructor() {
                 this.type = null;
@@ -273,6 +352,8 @@
             const table = document.getElementById("transactions-table");
             const tbody = document.getElementById("transactions-body");
             const count = document.getElementById("transaction-count");
+            const totalsVisibility = new AmountVisibility(document.getElementById("toggle-totals"), "totals");
+            const transactionVisibility = new AmountVisibility(document.getElementById("toggle-transaction-amounts"), "transaction amounts");
             const debitFilters = document.getElementById("debit-filters");
             const typeButtons = new Map([
                 ["debit", document.getElementById("filter-debit")],
@@ -290,6 +371,7 @@
             let selection;
 
             function tableMessage(message) {
+                transactionVisibility.clear();
                 const row = document.createElement("tr");
                 const cell = document.createElement("td");
                 cell.colSpan = 6;
@@ -301,6 +383,7 @@
 
             function renderTransactions(allTransactions) {
                 const transactions = transactionFilters.apply(allTransactions);
+                transactionVisibility.clear();
                 tbody.replaceChildren();
                 count.textContent = transactions.length === allTransactions.length
                     ? `${transactions.length.toLocaleString("en-IN")} transaction${transactions.length === 1 ? "" : "s"}`
@@ -312,10 +395,12 @@
                 const fragment = document.createDocumentFragment();
                 for (const transaction of transactions) {
                     const row = document.createElement("tr");
-                    for (const value of [transaction.transaction_date.slice(0, 10), transaction.merchant,
-                        `₹${Number(transaction.amount).toLocaleString("en-IN")}`, transaction.transaction_type, transaction.source]) {
+                    const values = [transaction.transaction_date.slice(0, 10), transaction.merchant,
+                        transaction.amount, transaction.transaction_type, transaction.source];
+                    for (const [index, value] of values.entries()) {
                         const cell = document.createElement("td");
-                        cell.textContent = value;
+                        if (index === 2) transactionVisibility.set(cell, value);
+                        else cell.textContent = value;
                         row.appendChild(cell);
                     }
                     const cell = document.createElement("td");
@@ -366,13 +451,14 @@
                 status.className = result.status === "error" ? "data-status error" : "data-status";
                 if (result.status === "ready") {
                     for (const field of cardFields) {
-                        document.getElementById(field).textContent = `₹${result.overview[field.replaceAll("-", "_")].toLocaleString("en-IN")}`;
+                        totalsVisibility.set(document.getElementById(field), result.overview[field.replaceAll("-", "_")]);
                     }
                     loadedTransactions = result.transactions;
                     renderTransactions(loadedTransactions);
                     status.textContent = "";
                 } else {
                     loadedTransactions = null;
+                    totalsVisibility.clear();
                     for (const field of cardFields) document.getElementById(field).textContent = "—";
                     count.textContent = "";
                     tableMessage(loading ? "Loading transactions…" : "Unable to load transactions.");

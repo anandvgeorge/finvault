@@ -14,7 +14,7 @@ function dashboard() {
         fetch: async () => { throw new Error("Unexpected network request"); },
     });
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ PeriodSelection, TransactionFilters, DashboardLoader, fetchJSON })", context), context };
+    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, TransactionFilters, DashboardLoader, fetchJSON })", context), context };
 }
 
 function selection(years = [2024, 2025]) {
@@ -28,6 +28,90 @@ function deferred() {
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
 }
+
+// Small DOM stand-in for testing the actual amount renderer and toggle handler.
+function element() {
+    return {
+        ownerDocument: { createElement: () => element() },
+        dataset: {}, attributes: new Map(), children: [], text: "",
+        get textContent() { return this.text + this.children.map(child => child.textContent).join(""); },
+        set textContent(value) { this.text = String(value); this.children = []; },
+        setAttribute(name, value) { this.attributes.set(name, value); },
+        getAttribute(name) { return this.attributes.get(name); },
+        replaceChildren(...children) { this.text = ""; this.children = children; },
+        appendChild(child) { this.children.push(child); },
+    };
+}
+
+test("amounts start visible with accessible Hide actions", () => {
+    const { AmountVisibility } = dashboard();
+    const button = element();
+    const display = new AmountVisibility(button, "totals");
+    const amount = element();
+    display.set(amount, "1490000.75");
+    assert.equal(amount.textContent, "₹14,90,000.75");
+    assert.equal(button.getAttribute("aria-label"), "Hide totals");
+    assert.equal(button.title, "Hide totals");
+    assert.equal(button.dataset.hidden, "false");
+});
+
+test("totals and transaction amounts hide independently and restore their exact values", () => {
+    const { AmountVisibility } = dashboard();
+    const totalsButton = element(), transactionButton = element();
+    const totals = new AmountVisibility(totalsButton, "totals");
+    const transactions = new AmountVisibility(transactionButton, "transaction amounts");
+    const cards = [element(), element(), element(), element(), element()];
+    const values = [42.5, 100, 57.5, 0, -25];
+    cards.forEach((card, index) => totals.set(card, values[index]));
+    const amount = element();
+    transactions.set(amount, "42.50");
+    totalsButton.onclick();
+    assert.equal(cards.every(card => card.textContent === "••••"), true);
+    assert.equal(cards[0].children[0].getAttribute("aria-label"), "Amount hidden");
+    assert.equal(totalsButton.getAttribute("aria-label"), "Show totals");
+    assert.equal(totalsButton.dataset.hidden, "true");
+    assert.equal(amount.textContent, "₹42.5");
+    transactionButton.onclick();
+    assert.equal(amount.textContent, "••••");
+    assert.equal(transactionButton.getAttribute("aria-label"), "Show transaction amounts");
+    totalsButton.onclick();
+    assert.deepEqual(cards.map(card => card.textContent), ["₹42.5", "₹100", "₹57.5", "₹0", "₹-25"]);
+    assert.equal(amount.textContent, "••••");
+    transactionButton.onclick();
+    assert.equal(amount.textContent, "₹42.5");
+});
+
+test("newly filtered or loaded amounts remain masked without retaining removed cells", () => {
+    const { AmountVisibility } = dashboard();
+    const button = element();
+    const display = new AmountVisibility(button, "transaction amounts");
+    const previous = element(), next = element();
+    display.set(previous, "42.50");
+    button.onclick();
+    display.clear();
+    display.set(next, "99.75");
+    assert.equal(next.textContent, "••••");
+    assert.equal(display.visible, false);
+    button.onclick();
+    assert.equal(next.textContent, "₹99.75");
+    assert.equal(previous.textContent, "••••");
+    assert.equal(display.amounts.size, 1);
+});
+
+test("visibility can change while loading and a fresh page starts visible again", () => {
+    const { AmountVisibility } = dashboard();
+    const button = element();
+    const display = new AmountVisibility(button, "totals");
+    display.clear();
+    button.onclick();
+    const amount = element();
+    display.set(amount, 0);
+    assert.equal(amount.textContent, "••••");
+    const fresh = new AmountVisibility(element(), "totals");
+    fresh.set(amount, 0);
+    assert.equal(amount.textContent, "₹0");
+    assert.equal(fresh.visible, true);
+});
 
 const TRANSACTIONS = [
     { id: 1, transaction_type: "debit", source: "UPI" },
