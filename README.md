@@ -23,10 +23,12 @@ uv run --locked python -m finvault
 Start the UI server (`src/finvault/api/main.py`):
 
 ```bash
-uv run --locked uvicorn finvault.api.main:app --reload
+uv run --locked uvicorn finvault.api.main:app --host 0.0.0.0 --reload
 ```
 
-Open <http://127.0.0.1:8000/>. Both commands use `data/finvault.db`.
+On the same machine, open <http://127.0.0.1:8000/>. From another machine over
+Tailscale, open `http://<server-tailscale-ip>:8000/`. The server listens on all
+IPv4 interfaces, including the LAN. Both commands use `data/finvault.db`.
 
 ## Tests and CI
 
@@ -48,6 +50,10 @@ updates never force-push. Only the promotion job has repository write access,
 using GitHub's automatically supplied token. A manual run on `main` can also
 promote it after passing tests. Pi deployment is configured separately; updating
 this branch alone does not restart the Pi application.
+
+The [Pi deployment guide](deploy/README.md) covers installing tested releases,
+checking startup, restoring the previous code on failure, and scheduling update
+checks. Application data stays in the existing runtime directory.
 
 ## License
 
