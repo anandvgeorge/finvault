@@ -38,3 +38,36 @@ jobs:
 
       - name: Run unit tests
         run: uv run --locked python -m unittest discover -s tests -v
+
+  promote-production:
+    name: Promote production
+    needs: tests
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: finvault-production-promotion
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Update production branch
+        shell: bash
+        run: |
+          git fetch origin main
+          if [ "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+            echo "Skipping promotion: main has a newer commit."
+            exit 0
+          fi
+
+          # A normal push creates the branch or moves it forward; never force it.
+          git push origin "${GITHUB_SHA}:refs/heads/production"
+          echo "Promoted tested commit ${GITHUB_SHA} to production."

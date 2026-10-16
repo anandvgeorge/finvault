@@ -40,8 +40,14 @@ uv run --locked python -m unittest discover -s tests -v
 pull requests, and can be started manually from the Actions tab. It uses the
 Python version in `.python-version` and the dependencies in `uv.lock`. Tests use
 synthetic data and mocked Gmail access; no Google credentials or repository
-secrets are required. This workflow runs tests only; Pi deployment is configured
-separately.
+secrets are required.
+
+After tests pass on `main`, CI creates or advances the `production` branch to
+that exact tested commit. Older runs skip promotion if `main` has moved on;
+updates never force-push. Only the promotion job has repository write access,
+using GitHub's automatically supplied token. A manual run on `main` can also
+promote it after passing tests. Pi deployment is configured separately; updating
+this branch alone does not restart the Pi application.
 
 ## License
 
