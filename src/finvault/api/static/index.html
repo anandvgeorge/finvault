@@ -73,6 +73,11 @@
         .transactions { margin-top: 40px; }
         .transactions h2 { margin-bottom: 8px; }
         .transaction-count { margin: 0; color: #526078; font-size: 14px; }
+        .transaction-filters { display: flex; align-items: center; gap: 12px; overflow-x: auto; padding: 4px 3px; margin: 12px 0; }
+        .transaction-types, .debit-filters { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+        .transaction-filters .period-button { white-space: nowrap; }
+        .debit-filters { border-left: 1px solid #cbd4e1; padding-left: 14px; }
+        .debit-filters[hidden] { display: none; }
         .table-scroll { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
@@ -114,7 +119,18 @@
     </div>
     <section class="transactions" aria-labelledby="transactions-heading">
         <h2 id="transactions-heading">Transactions</h2>
-        <p id="transaction-count" class="transaction-count"></p>
+        <div class="transaction-filters" aria-label="Transaction filters">
+            <div class="transaction-types" role="group" aria-label="Transaction type">
+                <button type="button" id="filter-debit" class="period-button" aria-pressed="false" aria-controls="transactions-table">Debit</button>
+                <button type="button" id="filter-credit" class="period-button" aria-pressed="false" aria-controls="transactions-table">Credit</button>
+            </div>
+            <div id="debit-filters" class="debit-filters" role="group" aria-label="Debit payment type" hidden>
+                <button type="button" id="filter-upi" class="period-button" aria-pressed="false" aria-controls="transactions-table">UPI</button>
+                <button type="button" id="filter-credit-card" class="period-button" aria-pressed="false" aria-controls="transactions-table">Credit card</button>
+                <button type="button" id="filter-debit-card" class="period-button" aria-pressed="false" aria-controls="transactions-table">Debit card</button>
+            </div>
+        </div>
+        <p id="transaction-count" class="transaction-count" aria-live="polite"></p>
         <div class="table-scroll">
             <table aria-busy="true" id="transactions-table">
                 <thead>
@@ -185,6 +201,32 @@
             }
         }
 
+        class TransactionFilters {
+            constructor() {
+                this.type = null;
+                this.sources = new Set();
+            }
+
+            toggleType(type) {
+                if (!["debit", "credit"].includes(type)) return;
+                this.type = this.type === type ? null : type;
+                this.sources.clear();
+            }
+
+            toggleSource(source) {
+                if (this.type !== "debit" || !["UPI", "Debit card", "Credit card"].includes(source)) return;
+                if (this.sources.has(source)) this.sources.delete(source);
+                else this.sources.add(source);
+            }
+
+            apply(transactions) {
+                return transactions.filter(transaction =>
+                    (!this.type || transaction.transaction_type === this.type) &&
+                    (this.type !== "debit" || !this.sources.size || this.sources.has(transaction.source))
+                );
+            }
+        }
+
         async function fetchJSON(url, signal) {
             const response = await fetch(url, { signal });
             if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -231,6 +273,18 @@
             const table = document.getElementById("transactions-table");
             const tbody = document.getElementById("transactions-body");
             const count = document.getElementById("transaction-count");
+            const debitFilters = document.getElementById("debit-filters");
+            const typeButtons = new Map([
+                ["debit", document.getElementById("filter-debit")],
+                ["credit", document.getElementById("filter-credit")],
+            ]);
+            const sourceButtons = new Map([
+                ["UPI", document.getElementById("filter-upi")],
+                ["Debit card", document.getElementById("filter-debit-card")],
+                ["Credit card", document.getElementById("filter-credit-card")],
+            ]);
+            const transactionFilters = new TransactionFilters();
+            let loadedTransactions = null;
             const cardFields = ["total-debits", "total-credits", "net-cashflow", "upi-debits", "credit-card-debits"];
             const yearRows = new Map();
             let selection;
@@ -245,9 +299,12 @@
                 tbody.replaceChildren(row);
             }
 
-            function renderTransactions(transactions) {
+            function renderTransactions(allTransactions) {
+                const transactions = transactionFilters.apply(allTransactions);
                 tbody.replaceChildren();
-                count.textContent = `${transactions.length.toLocaleString("en-IN")} transaction${transactions.length === 1 ? "" : "s"}`;
+                count.textContent = transactions.length === allTransactions.length
+                    ? `${transactions.length.toLocaleString("en-IN")} transaction${transactions.length === 1 ? "" : "s"}`
+                    : `${transactions.length.toLocaleString("en-IN")} of ${allTransactions.length.toLocaleString("en-IN")} transactions`;
                 if (!transactions.length) {
                     tableMessage("No transactions for this selection.");
                     return;
@@ -283,6 +340,24 @@
                 tbody.appendChild(fragment);
             }
 
+            function refreshTransactionFilters() {
+                for (const [type, button] of typeButtons) {
+                    button.setAttribute("aria-pressed", String(transactionFilters.type === type));
+                }
+                debitFilters.hidden = transactionFilters.type !== "debit";
+                for (const [source, button] of sourceButtons) {
+                    button.setAttribute("aria-pressed", String(transactionFilters.sources.has(source)));
+                }
+                if (loadedTransactions !== null) renderTransactions(loadedTransactions);
+            }
+
+            for (const [type, button] of typeButtons) {
+                button.onclick = () => { transactionFilters.toggleType(type); refreshTransactionFilters(); };
+            }
+            for (const [source, button] of sourceButtons) {
+                button.onclick = () => { transactionFilters.toggleSource(source); refreshTransactionFilters(); };
+            }
+
             const loader = new DashboardLoader(fetchJSON, result => {
                 const loading = result.status === "loading";
                 cards.setAttribute("aria-busy", String(loading));
@@ -293,9 +368,11 @@
                     for (const field of cardFields) {
                         document.getElementById(field).textContent = `₹${result.overview[field.replaceAll("-", "_")].toLocaleString("en-IN")}`;
                     }
-                    renderTransactions(result.transactions);
+                    loadedTransactions = result.transactions;
+                    renderTransactions(loadedTransactions);
                     status.textContent = "";
                 } else {
+                    loadedTransactions = null;
                     for (const field of cardFields) document.getElementById(field).textContent = "—";
                     count.textContent = "";
                     tableMessage(loading ? "Loading transactions…" : "Unable to load transactions.");

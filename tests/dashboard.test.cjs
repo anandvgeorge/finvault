@@ -14,7 +14,7 @@ function dashboard() {
         fetch: async () => { throw new Error("Unexpected network request"); },
     });
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ PeriodSelection, DashboardLoader, fetchJSON })", context), context };
+    return { ...vm.runInContext("({ PeriodSelection, TransactionFilters, DashboardLoader, fetchJSON })", context), context };
 }
 
 function selection(years = [2024, 2025]) {
@@ -28,6 +28,86 @@ function deferred() {
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
 }
+
+const TRANSACTIONS = [
+    { id: 1, transaction_type: "debit", source: "UPI" },
+    { id: 2, transaction_type: "credit", source: "Credit" },
+    { id: 3, transaction_type: "debit", source: "Debit card" },
+    { id: 4, transaction_type: "debit", source: "Credit card" },
+    { id: 5, transaction_type: "credit", source: "Debit card" },
+    { id: 6, transaction_type: "debit", source: "Bank transfer" },
+    { id: 7, transaction_type: "credit", source: "UPI" },
+];
+
+test("transaction filters default to all rows and preserve their order", () => {
+    const { TransactionFilters } = dashboard();
+    const filters = new TransactionFilters();
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1, 2, 3, 4, 5, 6, 7]);
+    assert.equal(TRANSACTIONS.length, 7);
+});
+
+test("Debit includes every debit source until specific payment types narrow it", () => {
+    const { TransactionFilters } = dashboard();
+    const filters = new TransactionFilters();
+    filters.toggleType("debit");
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1, 3, 4, 6]);
+    filters.toggleSource("UPI");
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1]);
+    filters.toggleSource("Debit card");
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1, 3]);
+    filters.toggleSource("Credit card");
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1, 3, 4]);
+});
+
+test("debit payment types toggle off and clearing the last includes all debits again", () => {
+    const { TransactionFilters } = dashboard();
+    const filters = new TransactionFilters();
+    filters.toggleType("debit");
+    filters.toggleSource("UPI");
+    filters.toggleSource("Debit card");
+    filters.toggleSource("UPI");
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [3]);
+    filters.toggleSource("Debit card");
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1, 3, 4, 6]);
+});
+
+test("Credit clears debit payment filters and includes credits such as card reversals", () => {
+    const { TransactionFilters } = dashboard();
+    const filters = new TransactionFilters();
+    filters.toggleType("debit");
+    filters.toggleSource("UPI");
+    filters.toggleType("credit");
+    assert.equal(filters.sources.size, 0);
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [2, 5, 7]);
+    filters.toggleSource("Credit card");
+    assert.equal(filters.sources.size, 0);
+    filters.toggleType("credit");
+    assert.equal(filters.type, null);
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1, 2, 3, 4, 5, 6, 7]);
+});
+
+test("deselecting Debit clears its payment types rather than restoring stale filters", () => {
+    const { TransactionFilters } = dashboard();
+    const filters = new TransactionFilters();
+    filters.toggleType("debit");
+    filters.toggleSource("UPI");
+    filters.toggleType("debit");
+    assert.equal(filters.type, null);
+    assert.equal(filters.sources.size, 0);
+    filters.toggleSource("Debit card");
+    assert.equal(filters.sources.size, 0);
+    filters.toggleType("debit");
+    assert.deepEqual(filters.apply(TRANSACTIONS).map(row => row.id), [1, 3, 4, 6]);
+});
+
+test("transaction filters operate only on the supplied date-range rows", () => {
+    const { TransactionFilters } = dashboard();
+    const filters = new TransactionFilters();
+    filters.toggleType("debit");
+    filters.toggleSource("UPI");
+    assert.deepEqual(filters.apply([TRANSACTIONS[1], TRANSACTIONS[2]]), []);
+    assert.deepEqual(filters.apply([TRANSACTIONS[0], TRANSACTIONS[4]]).map(row => row.id), [1]);
+});
 
 test("available years are sorted and current year/month are selected by default", () => {
     const { PeriodSelection } = dashboard();
