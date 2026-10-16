@@ -1,12 +1,14 @@
 from pathlib import Path
 from fastapi.responses import FileResponse
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 
+from finvault.api.filters import Months, Period, Years, transaction_date_filter
 from finvault.database.database import Database
 
 app = FastAPI()
 
 database = Database()
+
 
 @app.get("/")
 def dashboard():
@@ -14,12 +16,30 @@ def dashboard():
         Path(__file__).parent / "static" / "index.html"
     )
 
-@app.get("/overview")
-def get_overview(
-    period: str = Query("month")
-):
+
+@app.get("/years")
+def get_years() -> list[int]:
+    """Return years represented by transactions, newest first."""
     cursor = database.connection.execute(
         """
+        SELECT DISTINCT substr(transaction_date, 1, 4) AS year
+        FROM transactions
+        ORDER BY year DESC
+        """
+    )
+    return [int(row[0]) for row in cursor.fetchall()]
+
+
+@app.get("/overview")
+def get_overview(
+    period: Period = "all",
+    years: Years = None,
+    months: Months = None,
+):
+    """Return selected totals, or all-time totals when filters are omitted."""
+    where, parameters = transaction_date_filter(period, years, months)
+    cursor = database.connection.execute(
+        f"""
         SELECT
             SUM(CASE WHEN transaction_type = 'debit'
                 THEN CAST(amount AS REAL) ELSE 0 END) AS total_debits,
@@ -49,17 +69,9 @@ def get_overview(
 
         FROM transactions
 
-        WHERE
-            CASE
-                WHEN ? = 'month'
-                    THEN transaction_date >= date('now', 'start of month')
-                WHEN ? = 'year'
-                    THEN transaction_date >= date('now', 'start of year')
-                WHEN ? = 'all'
-                    THEN 1
-            END
+        WHERE {where}
         """,
-        (period, period, period),
+        parameters,
     )
 
     row = cursor.fetchone()
@@ -74,9 +86,15 @@ def get_overview(
 
 
 @app.get("/transactions")
-def get_transactions():
+def get_transactions(
+    period: Period = "all",
+    years: Years = None,
+    months: Months = None,
+):
+    """Return rows for the same calendar selection accepted by /overview."""
+    where, parameters = transaction_date_filter(period, years, months)
     cursor = database.connection.execute(
-        """
+        f"""
         SELECT
             id,
             transaction_date,
@@ -89,8 +107,10 @@ def get_transactions():
             reference,
             category
         FROM transactions
+        WHERE {where}
         ORDER BY transaction_date DESC
-        """
+        """,
+        parameters,
     )
 
     rows = cursor.fetchall()
