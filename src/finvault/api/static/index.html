@@ -7,7 +7,7 @@
 <style>
     body {
         font-family: Arial, sans-serif;
-        max-width: 1000px;
+        max-width: 1200px;
         margin: 40px auto;
         padding: 0 20px;
     }
@@ -35,6 +35,31 @@
     .card p {
         font-size: 24px;
         font-weight: bold;
+    }
+
+    .transactions {
+        margin-top: 50px;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+
+    th,
+    td {
+        padding: 12px;
+        border-bottom: 1px solid #ddd;
+        text-align: left;
+    }
+
+    th {
+        font-weight: bold;
+    }
+
+    select {
+        padding: 6px;
     }
 </style>
 
@@ -80,6 +105,26 @@
     </div>
 </div>
 
+<div class="transactions">
+    <h2>Transactions</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Merchant</th>
+                <th>Amount</th>
+                <th>Type</th>
+                <th>Source</th>
+                <th>Category</th>
+            </tr>
+        </thead>
+
+        <tbody id="transactions-body">
+        </tbody>
+    </table>
+</div>
+
 <script>
     async function loadOverview() {
         const period = document.getElementById("period").value;
@@ -103,12 +148,46 @@
             `₹${data.credit_card_debits.toLocaleString("en-IN")}`;
     }
 
+    async function loadTransactions() {
+        const response = await fetch("/transactions");
+        const transactions = await response.json();
+
+        const tbody = document.getElementById("transactions-body");
+
+        tbody.innerHTML = "";
+
+        for (const transaction of transactions) {
+            const row = document.createElement("tr");
+
+            row.innerHTML = `
+                <td>${transaction.transaction_date.slice(0, 10)}</td>
+                <td>${transaction.merchant}</td>
+                <td>₹${Number(transaction.amount).toLocaleString("en-IN")}</td>
+                <td>${transaction.transaction_type}</td>
+                <td>${transaction.source}</td>
+                <td>
+                    <select>
+                        <option value="">Uncategorized</option>
+                        <option value="necessary">Necessary</option>
+                        <option value="lifestyle">Lifestyle</option>
+                        <option value="investment">Investment</option>
+                        <option value="salary">Salary</option>
+                        <option value="other">Other</option>
+                    </select>
+                </td>
+            `;
+
+            tbody.appendChild(row);
+        }
+    }
+
     document.getElementById("period").addEventListener(
         "change",
         loadOverview
     );
 
     loadOverview();
+    loadTransactions();
 </script>
 
 </body>

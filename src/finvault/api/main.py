@@ -71,3 +71,42 @@ def get_overview(
         "upi_debits": row[3] or 0,
         "credit_card_debits": row[4] or 0,
     }
+
+
+@app.get("/transactions")
+def get_transactions():
+    cursor = database.connection.execute(
+        """
+        SELECT
+            id,
+            transaction_date,
+            amount,
+            currency,
+            transaction_type,
+            merchant,
+            account,
+            source,
+            reference,
+            category
+        FROM transactions
+        ORDER BY transaction_date DESC
+        """
+    )
+
+    rows = cursor.fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "transaction_date": row[1],
+            "amount": row[2],
+            "currency": row[3],
+            "transaction_type": row[4],
+            "merchant": row[5],
+            "account": row[6],
+            "source": row[7],
+            "reference": row[8],
+            "category": row[9],
+        }
+        for row in rows
+    ]
