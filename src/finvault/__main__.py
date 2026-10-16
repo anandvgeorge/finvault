@@ -21,6 +21,7 @@ def main():
     ingestor.ingest_label("UPI")
     ingestor.ingest_label("Credit card")
     ingestor.ingest_label("Credit")
+    ingestor.ingest_label("Debit card")
 
     processor = TransactionProcessor(database)
     processor.process()

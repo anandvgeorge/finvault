@@ -15,25 +15,37 @@ class TransactionProcessor:
 
         parsed_count = 0
         failed_count = 0
+        skipped_count = 0
 
         for email, source in emails:
             transaction = self.parser.parse(email, source)
 
             if transaction is None:
+                reason = self.parser.get_skip_reason(email)
+                if reason:
+                    logger.debug(
+                        "Skipping email: %s | source=%s | reason=%s",
+                        email.gmail_id,
+                        source,
+                        reason,
+                    )
+                    skipped_count += 1
+                    continue
                 logger.warning(
                     "Could not parse email: %s | %s | source=%s",
-                        email.gmail_id,
-                        email.subject,
-                        source,
+                    email.gmail_id,
+                    email.subject,
+                    source,
                 )
                 failed_count += 1
                 continue
-            
+
             self.database.save_transaction(transaction)
             parsed_count += 1
 
         logger.info(
-            "Processing complete: %d parsed, %d failed",
+            "Processing complete: %d parsed, %d skipped, %d failed",
             parsed_count,
+            skipped_count,
             failed_count,
         )
