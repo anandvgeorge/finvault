@@ -1,8 +1,29 @@
 # FinVault
 
-Centralised financial record, hosted on-prem. 
+Self-hosted personal finance tracker powered by Gmail transaction emails.
 
 The public website and GitHub Pages publishing instructions are in [docs/](docs/README.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Gmail["Gmail<br/>Read-only OAuth"] -->|New emails| Ingest["Email ingestion"]
+
+    subgraph SQLite["Local SQLite · data/finvault.db"]
+        Emails["Saved emails"]
+        Transactions["Transactions"]
+    end
+
+    Ingest --> Emails
+    Emails -->|Without a saved transaction| Parser["Transaction parser"]
+    Parser --> Transactions
+    Transactions -->|Transaction data| API["FastAPI + Uvicorn"]
+    API -->|HTML + JSON| Dashboard["Browser dashboard"]
+```
+
+Emails with saved transactions are not reparsed; failed or unsupported emails
+remain eligible for a later attempt.
 
 ## Local testing
 
@@ -44,16 +65,39 @@ Python version in `.python-version` and the dependencies in `uv.lock`. Tests use
 synthetic data and mocked Gmail access; no Google credentials or repository
 secrets are required.
 
-After tests pass on `main`, CI creates or advances the `production` branch to
-that exact tested commit. Older runs skip promotion if `main` has moved on;
-updates never force-push. Only the promotion job has repository write access,
-using GitHub's automatically supplied token. A manual run on `main` can also
-promote it after passing tests. Pi deployment is configured separately; updating
-this branch alone does not restart the Pi application.
+## Deployment architecture
 
-The [Pi deployment guide](deploy/README.md) covers installing tested releases,
-checking startup, restoring the previous code on failure, and scheduling update
-checks. Application data stays in the existing runtime directory.
+```mermaid
+flowchart TB
+    Laptop["Laptop<br/>Develop and test"] -->|git push| Main
+
+    subgraph GitHub["GitHub"]
+        Main["main"] --> CI["Run unit tests"]
+        CI -->|Tests pass on current main| Production["production<br/>Exact tested commit"]
+    end
+
+    subgraph Pi["Raspberry Pi · systemd user services"]
+        Timer["finvault-deploy.timer<br/>5 min after the last check"] --> Deploy["finvault-deploy.service<br/>Deployment script"]
+        Deploy --> Clone["~/finvault<br/>Git clone"]
+        Clone -->|Extract commit + uv sync --locked| Release["releases/SHA/<br/>Code + Python environment"]
+        Release -->|Switch active release| Current["current symlink"]
+        Current --> UI["finvault-ui.service<br/>Dashboard on port 8000"]
+        Current --> Ingest["finvault-ingest.service"]
+        Schedule["finvault-ingest.timer<br/>Every 15 minutes"] --> Ingest
+    end
+
+    Laptop -->|Browser over Tailscale| UI
+    Production -->|Pi pulls code| Clone
+```
+
+Releases and `current` live under `~/.local/share/finvault/`. The database,
+OAuth files, and logs stay outside the release directories.
+
+Unchanged commits skip deployment. Updates wait for ingestion to finish, restart
+the UI, and check startup; failed startup triggers a rollback to the previous
+code. Database changes are not rolled back.
+
+See the [Pi deployment guide](deploy/README.md) for setup commands.
 
 ## License
 
