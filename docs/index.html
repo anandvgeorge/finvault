@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="FinVault is a personal, self-hosted finance tracker that brings transaction emails into a local financial record.">
+    <meta name="theme-color" content="#f6f5ef">
+    <title>FinVault — Personal finance, on your own terms</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="brand" href="index.html" aria-label="FinVault home"><span class="brand-mark" aria-hidden="true">F</span>FinVault</a>
+      <nav aria-label="Main navigation">
+        <a href="index.html" aria-current="page">Home</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </nav>
+    </header>
+
+    <main id="main" class="wrap">
+      <section class="hero" aria-labelledby="intro-title">
+        <p class="eyebrow">Personal finance · Self-hosted</p>
+        <h1 id="intro-title">A clearer view of<br>your everyday money.</h1>
+        <p class="hero-copy">FinVault brings transaction emails into a personal financial record. Review your spending, income, and transactions in a dashboard you run on your own computer or server.</p>
+        <div class="actions">
+          <a class="button" href="https://github.com/anandvgeorge/finvault">View the project <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="privacy.html">Understand the data access <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="project-facts" aria-label="Project details">
+          <span>Gmail read-only access</span>
+          <span>Local SQLite storage</span>
+          <span>Built for personal use</span>
+        </div>
+      </section>
+
+      <section class="how-it-works" aria-labelledby="how-title">
+        <div class="section-intro">
+          <p class="eyebrow">From inbox to overview</p>
+          <h2 id="how-title">One place to follow<br>your transactions.</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <span class="step-number" aria-hidden="true">01</span>
+            <div><h3>Read transaction emails</h3><p>Authorize Gmail read-only access. FinVault retrieves emails from the Gmail labels configured for ingestion.</p></div>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">02</span>
+            <div><h3>Build a local record</h3><p>Supported email formats are parsed into transactions. Email records and extracted transaction data are stored in SQLite on the host running FinVault.</p></div>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">03</span>
+            <div><h3>Review the bigger picture</h3><p>Use the dashboard to view transaction history and summaries of income, spending, and cash flow. Check the original records when accuracy matters.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <aside class="context-note" aria-label="About this website">
+        <strong>A small project for a personal workflow.</strong>
+        <p>This website introduces FinVault and its data practices. The finance dashboard runs in your own installation. Read the <a href="privacy.html">privacy notice</a> and <a href="terms.html">terms of use</a> before connecting an account.</p>
+      </aside>
+    </main>
+
+    <footer class="site-footer wrap">
+      <p>FinVault <span aria-hidden="true">/</span> Personal finance, self-hosted.</p>
+      <nav aria-label="Footer navigation"><a href="index.html">Home</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+    </footer>
+  </body>
+</html>

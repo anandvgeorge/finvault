@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="How FinVault uses Gmail read-only access and stores email and transaction records in a local SQLite database.">
+    <meta name="theme-color" content="#f6f5ef">
+    <title>Privacy notice — FinVault</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="brand" href="index.html" aria-label="FinVault home"><span class="brand-mark" aria-hidden="true">F</span>FinVault</a>
+      <nav aria-label="Main navigation"><a href="index.html">Home</a><a href="privacy.html" aria-current="page">Privacy</a><a href="terms.html">Terms</a></nav>
+    </header>
+
+    <main id="main" class="wrap document">
+      <div class="document-heading">
+        <p class="eyebrow">Your data &amp; the project</p>
+        <h1>Privacy notice</h1>
+        <p class="lede">FinVault is a personal, self-hosted finance tracker maintained by Anand George. This notice describes the application and the maintainer’s personal installation. Other operators are responsible for the data practices of their own installations.</p>
+      </div>
+
+      <section aria-labelledby="gmail-title">
+        <h2 id="gmail-title">Gmail access</h2>
+        <p>FinVault uses Google OAuth to request the <code>https://www.googleapis.com/auth/gmail.readonly</code> scope. This permission allows reading Gmail messages and metadata; it does not permit sending, modifying, or deleting email. See <a href="https://developers.google.com/workspace/gmail/api/auth/scopes">Google’s description of Gmail scopes</a>.</p>
+        <p>The permission covers reading your mailbox. The current ingestion process selects messages using configured Gmail labels associated with transactions. Label selection determines which messages are retrieved; the OAuth permission itself is broader than those labels.</p>
+        <p>The application communicates with Google’s authentication services and Gmail API to authorize access, refresh access tokens, and retrieve email. Google’s handling of that communication is described in <a href="https://policies.google.com/privacy">Google’s privacy policy</a>.</p>
+      </section>
+
+      <section aria-labelledby="stored-title">
+        <h2 id="stored-title">What is stored and why</h2>
+        <p>FinVault stores data in a local SQLite database on the computer or server running the application. It uses those records to parse transaction emails and provide financial history and dashboard summaries.</p>
+        <ul>
+          <li><strong>Email records:</strong> Gmail message identifiers, sender, subject, received date, ingestion label, and email body content in text and/or HTML form.</li>
+          <li><strong>Transaction records:</strong> parsed amounts, currencies, debit or credit type, merchants, dates, account identifiers found in the emails, sources, references, and links to the associated email records.</li>
+          <li><strong>OAuth credentials:</strong> the application saves authorization tokens, including a refresh token when supplied, in a local token file for subsequent Gmail access.</li>
+          <li><strong>Operational logs:</strong> ingestion and parsing logs can include message identifiers and subjects, as well as processing counts and errors.</li>
+        </ul>
+        <p>Messages placed in an ingestion label may contain information beyond transaction details. That content can be retained in the email records even when a transaction cannot be parsed.</p>
+      </section>
+
+      <section aria-labelledby="hosting-title">
+        <h2 id="hosting-title">Hosting, access, and sharing</h2>
+        <p>In the maintainer’s personal installation, email and transaction records stay in a local SQLite database. OAuth tokens and operational logs are also stored locally. These records are not uploaded to another server. The installation has no remote access, remote monitoring, or external analytics.</p>
+        <p>The application’s internet connections are limited to retrieving email through the Gmail API and Google authentication, including token refresh. The public informational website is hosted separately and has no connection to the local financial records.</p>
+        <p>The self-hosted application serves stored transaction data through its API and dashboard. Access to another operator’s installation depends on that operator’s host and network settings. Local storage by itself does not establish encryption or access controls; this notice makes no such guarantees.</p>
+      </section>
+
+      <section aria-labelledby="retention-title">
+        <h2 id="retention-title">Retention and withdrawing access</h2>
+        <p>The current application does not automatically expire or delete email records, transactions, OAuth token files, or logs. They remain on the host until manually removed or replaced by the operator. No fixed retention period is promised.</p>
+        <p>For questions about retention or deletion in the maintainer’s installation, email <a href="mailto:anandvgeorge@gmail.com">anandvgeorge@gmail.com</a>. Operators of other installations manage their own local records and any backup copies.</p>
+        <p>You can remove FinVault’s Google account authorization through <a href="https://myaccount.google.com/connections">Google’s third-party connections settings</a>. Revoking access stops future authorized Gmail retrieval; it does not remove records already stored by an installation. Stop ingestion before removing local tokens or data, and handle backup copies separately.</p>
+      </section>
+
+      <section aria-labelledby="backups-title">
+        <h2 id="backups-title">Backups</h2>
+        <p>FinVault does not automatically create backups. In the maintainer’s personal installation, there are no separate backup copies of the local database, either on the host or elsewhere.</p>
+        <p>Users of other self-hosted installations may create backups at their discretion. They are responsible for choosing where those copies are stored, who can access them, how long they are retained, and how they are deleted.</p>
+      </section>
+
+      <section aria-labelledby="website-title">
+        <h2 id="website-title">This public website</h2>
+        <p>These informational pages contain no Gmail sign-in flow, transaction dashboard, analytics scripts, or external fonts. When hosted on GitHub Pages, GitHub logs visitors’ IP addresses for security purposes. Read <a href="https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages#data-collection">GitHub’s Pages data collection notice</a> and <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub’s privacy statement</a> for details.</p>
+      </section>
+
+      <section aria-labelledby="questions-title">
+        <h2 id="questions-title">Questions and updates</h2>
+        <p>For privacy questions, contact Anand George at <a href="mailto:anandvgeorge@gmail.com">anandvgeorge@gmail.com</a>. Project information and updates are available in the <a href="https://github.com/anandvgeorge/finvault">FinVault repository</a>. Avoid posting email content, tokens, or financial records in public discussions. Review this notice when changing the application or its hosting setup.</p>
+        <p>Also read the <a href="terms.html">terms of use</a>, or return to the <a href="index.html">project overview</a>.</p>
+      </section>
+    </main>
+
+    <footer class="site-footer wrap">
+      <p>FinVault <span aria-hidden="true">/</span> Personal finance, self-hosted.</p>
+      <nav aria-label="Footer navigation"><a href="index.html">Home</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+    </footer>
+  </body>
+</html>
