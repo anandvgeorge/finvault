@@ -76,6 +76,24 @@
         .add-category { display: flex; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
         .add-category input { flex: 1; }
         .add-rule { display: flex; justify-content: flex-end; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
+        .backfill-help { margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
+        .backfill-help h3 { margin: 0 0 8px; color: var(--yellow); font-size: 12px; font-weight: 500; }
+        .backfill-help .help { margin-bottom: 12px; }
+        .backfill-help .button { min-height: 40px; color: #c3cbb7; font: 500 12px/1.4 var(--mono); }
+        .backfill-help .button:hover:not(:disabled) { border-color: #777b4f; background: #2b2e20; color: var(--ink); }
+        .backfill-help .button[aria-pressed="true"], .backfill-help .button[aria-pressed="true"]:hover { background: var(--yellow); border-color: var(--yellow); color: var(--yellow-ink); font-weight: 700; box-shadow: 2px 2px 0 #080b07; }
+        .backfill-help .button:disabled { opacity: .45; }
+        .backfill-help .button:focus-visible { outline-offset: 4px; }
+        .backfill-options { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+        .backfill-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+        .backfill-target { display: flex; gap: 6px; }
+        .backfill-month { flex: 1 1 160px; max-width: 200px; }
+        .backfill-command { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); }
+        .command-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+        .backfill-command pre { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 var(--mono); }
+        .backfill-command code { font: inherit; }
+        .backfill-feedback { margin-top: 10px; color: var(--muted); font-size: 11px; min-height: 1.6em; }
+        .backfill-feedback[data-error="true"] { color: var(--error); }
         .empty { padding: 16px 0; color: var(--muted); font-size: 12px; }
         .rule-list { display: grid; gap: 14px; }
         .rule-card { min-width: 0; padding: 16px; border: 1px solid var(--border); border-left: 2px solid #777b4f; border-radius: 3px; background: #151911; }
@@ -112,6 +130,7 @@
             h1 { font-size: 20px; }
             h2 { font-size: 15px; }
             .button, input, select { min-height: 44px; }
+            .backfill-help .button { min-height: 44px; padding: 10px 12px; }
             input, select, textarea { font-size: 16px; }
             .rule-trigger { min-height: 42px; padding: 6px 24px 6px 7px; font: 12px/1.5 var(--mono); background-position: right 7px center; background-size: 12px; }
             #rule-menu .category-option { min-height: 42px; padding: 12px 22px; font: 12px/1.5 var(--mono); }
@@ -174,6 +193,34 @@
                     <p class="help">Rules apply to newly parsed transactions on the next ingestion run. The first matching rule wins.</p>
                     <div id="rule-list" class="rule-list"></div>
                     <div class="add-rule"><button id="add-rule" type="button" class="button">+ Add rule</button></div>
+                    <aside class="backfill-help" aria-labelledby="backfill-heading">
+                        <h3 id="backfill-heading">Apply rules to existing transactions</h3>
+                        <p class="help">Save your rules first. Copy and run Preview in a terminal, review the results, then run Apply. Only Uncategorized transactions are updated.</p>
+                        <div class="backfill-options">
+                            <div>
+                                <span id="backfill-target-label" class="backfill-label">Run on</span>
+                                <div class="backfill-target" role="group" aria-labelledby="backfill-target-label">
+                                    <button type="button" class="button" data-backfill-host="laptop" aria-pressed="true">Laptop</button>
+                                    <button type="button" class="button" data-backfill-host="pi" aria-pressed="false">Raspberry Pi</button>
+                                </div>
+                            </div>
+                            <div class="backfill-month">
+                                <label for="backfill-month">Month (optional)</label>
+                                <input id="backfill-month" type="month" placeholder="YYYY-MM" aria-describedby="backfill-scope">
+                            </div>
+                        </div>
+                        <p id="backfill-location" class="help">Run from your laptop’s project folder.</p>
+                        <p id="backfill-scope" class="help">Leave the month blank to include all months. Choose the machine whose saved rules and data you want to use.</p>
+                        <div class="backfill-command">
+                            <div class="command-heading"><span>1. Preview</span><button type="button" class="button" data-copy-command="preview" aria-label="Copy backfill preview command">Copy</button></div>
+                            <pre><code id="backfill-preview"></code></pre>
+                        </div>
+                        <div class="backfill-command">
+                            <div class="command-heading"><span>2. Apply after review</span><button type="button" class="button" data-copy-command="apply" aria-label="Copy backfill apply command">Copy</button></div>
+                            <pre><code id="backfill-apply"></code></pre>
+                        </div>
+                        <p id="backfill-feedback" class="backfill-feedback" role="status" aria-live="polite"></p>
+                    </aside>
                 </section>
                 </div>
             </fieldset>
@@ -191,6 +238,76 @@
     <script src="/static/ui.js"></script>
     <script id="settings-script">
         "use strict";
+
+        function backfillCommands(host, month = "") {
+            if (!["laptop", "pi"].includes(host)) throw new Error("Choose Laptop or Raspberry Pi.");
+            if (month && (!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month) || month.startsWith("0000"))) {
+                throw new Error("Use a month in YYYY-MM format, or leave it blank for all months.");
+            }
+            const base = host === "pi"
+                ? 'cd "$HOME/.local/share/finvault" &&\n"$HOME/.local/share/finvault/current/.venv/bin/python" -m finvault.backfill_categories'
+                : "uv run --locked python -m finvault.backfill_categories";
+            const preview = base + (month ? ` --month ${month}` : "");
+            return { preview, apply: preview + " --apply" };
+        }
+
+        async function copyCommandText(text, document, clipboard) {
+            if (clipboard?.writeText) {
+                try { await clipboard.writeText(text); return true; }
+                catch { /* Fall back for browsers that deny clipboard access. */ }
+            }
+            const previousFocus = document.activeElement;
+            const input = document.createElement("textarea");
+            input.value = text; input.readOnly = true;
+            Object.assign(input.style, { position: "fixed", top: "0", left: "0", opacity: "0", fontSize: "16px" });
+            document.body.appendChild(input);
+            try {
+                input.focus({ preventScroll: true }); input.select();
+                return Boolean(document.execCommand?.("copy"));
+            } catch { return false; }
+            finally { input.remove(); previousFocus?.focus({ preventScroll: true }); }
+        }
+
+        function initializeBackfillCommands() {
+            const month = document.getElementById("backfill-month");
+            const location = document.getElementById("backfill-location"), feedback = document.getElementById("backfill-feedback");
+            const hosts = document.querySelectorAll("[data-backfill-host]"), copies = document.querySelectorAll("[data-copy-command]");
+            let host = "laptop";
+            function render() {
+                feedback.textContent = ""; feedback.dataset.error = "false";
+                hosts.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.backfillHost === host)));
+                location.textContent = host === "pi" ? "Run in a terminal on the Pi. The command selects its data folder." : "Run from your laptop’s project folder.";
+                try {
+                    const commands = backfillCommands(host, month.value);
+                    document.getElementById("backfill-preview").textContent = commands.preview;
+                    document.getElementById("backfill-apply").textContent = commands.apply;
+                    month.setCustomValidity(""); month.removeAttribute("aria-invalid");
+                    copies.forEach(button => { button.disabled = false; });
+                } catch (error) {
+                    month.setCustomValidity(error.message); month.setAttribute("aria-invalid", "true");
+                    document.getElementById("backfill-preview").textContent = "Choose a valid month to show the command.";
+                    document.getElementById("backfill-apply").textContent = "Choose a valid month to show the command.";
+                    feedback.textContent = error.message; feedback.dataset.error = "true";
+                    copies.forEach(button => { button.disabled = true; });
+                }
+            }
+            hosts.forEach(button => { button.onclick = () => { host = button.dataset.backfillHost; render(); }; });
+            month.oninput = render;
+            month.onkeydown = event => { if (event.key === "Enter") event.preventDefault(); };
+            copies.forEach(button => {
+                button.onclick = async () => {
+                    const kind = button.dataset.copyCommand;
+                    const focused = document.activeElement === button;
+                    button.disabled = true;
+                    const copied = await copyCommandText(document.getElementById(`backfill-${kind}`).textContent, document, navigator.clipboard);
+                    feedback.textContent = copied ? `${kind === "preview" ? "Preview" : "Apply"} command copied.` : "Couldn’t copy. Select and copy the command above.";
+                    feedback.dataset.error = String(!copied);
+                    button.disabled = !month.checkValidity();
+                    if (focused && !button.disabled && document.activeElement === document.body) button.focus({ preventScroll: true });
+                };
+            });
+            render();
+        }
 
         function statusTime(value) {
             if (!value) return "Not recorded yet";
@@ -357,6 +474,7 @@
         }
 
         function initializeSettings() {
+            initializeBackfillCommands();
             document.getElementById("refresh-status").onclick = () => { void refreshSystemStatus(); };
             void refreshSystemStatus();
             const form = document.getElementById("settings-form"), fields = document.getElementById("settings-fields");
