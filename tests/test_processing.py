@@ -3,7 +3,9 @@
 import unittest
 from unittest.mock import Mock, call
 
+from finvault.category_matching import KeywordCategoryMatcher
 from finvault.database.database import Database
+from finvault.models.category import Category, CategoryRule, CategorySettings
 from finvault.parsers.hdfc import HDFCParser
 from finvault.processing.transaction_processor import TransactionProcessor
 from tests.fixtures import email, transaction
@@ -13,7 +15,7 @@ class TransactionProcessorTests(unittest.TestCase):
     def setUp(self):
         self.database = Database(":memory:")
         self.addCleanup(self.database.close)
-        self.processor = TransactionProcessor(self.database)
+        self.processor = TransactionProcessor(self.database, KeywordCategoryMatcher(CategorySettings(categories=())))
         self.processor.parser = Mock(wraps=HDFCParser())
 
     def purchase(self, message_id):
@@ -72,3 +74,59 @@ class TransactionProcessorTests(unittest.TestCase):
             self.processor.process()
         self.processor.parser.parse.assert_not_called()
         self.assertIn("0 parsed, 0 skipped, 0 failed", logs.output[-1])
+
+    def configure(self, *rules):
+        self.processor.matcher = KeywordCategoryMatcher(CategorySettings(
+            categories=(Category(id="custom", label="Example category"), Category(id="another", label="Another category")),
+            rules=rules,
+        ))
+
+    def test_parsed_transaction_category_is_saved_using_its_type_not_the_gmail_label(self):
+        self.configure(
+            CategoryRule(category="another", keywords=("example merchant",), transaction_type="credit"),
+            CategoryRule(category="custom", keywords=("example merchant",), transaction_type="debit"),
+        )
+        # Overlapping Credit labels can contain debit transactions.
+        self.database.save_email(self.purchase("fixture-matched"), "Credit")
+        self.database.save_email(email("fixture-unmatched", (
+            "Thank you for using your HDFC Bank Debit Card ending 0000 for Rs 42.50 at Another Merchant"
+        )), "Debit card")
+        self.processor.process()
+        self.assertEqual(self.database.connection.execute(
+            "SELECT email_id, transaction_type, category FROM transactions ORDER BY id"
+        ).fetchall(), [("fixture-matched", "debit", "custom"), ("fixture-unmatched", "debit", None)])
+
+    def test_sender_subject_merchant_and_raw_html_are_not_matching_inputs(self):
+        self.configure(CategoryRule(category="custom", keywords=("fictional payroll",)))
+        record = self.purchase("fixture-metadata")
+        record.sender = "Fictional Payroll <alerts@example.invalid>"
+        record.subject = "Fictional Payroll"
+        record.body_html = '<p data-tracking="fictional payroll">Unrelated text</p>'
+        self.database.save_email(record, "Debit card")
+        self.processor.parser = Mock()
+        self.processor.parser.parse.return_value = transaction(record.gmail_id, merchant="Fictional Payroll")
+        self.processor.process()
+        self.assertEqual(self.database.connection.execute("SELECT category FROM transactions").fetchall(), [(None,)])
+
+    def test_existing_manual_and_uncategorised_transactions_are_preserved(self):
+        self.configure(CategoryRule(category="custom", keywords=("example merchant",)))
+        for message_id, category in (("fixture-manual", "another"), ("fixture-uncategorised", None)):
+            self.database.save_email(self.purchase(message_id), "Debit card")
+            self.database.save_transaction(transaction(message_id, category=category))
+        self.database.save_email(self.purchase("fixture-new"), "Debit card")
+        self.processor.process()
+        self.processor.process()
+        self.assertEqual(self.database.connection.execute(
+            "SELECT email_id, category FROM transactions ORDER BY id"
+        ).fetchall(), [("fixture-manual", "another"), ("fixture-uncategorised", None), ("fixture-new", "custom")])
+        self.processor.parser.parse.assert_called_once()
+
+    def test_matcher_interface_receives_only_body_and_parsed_type(self):
+        matcher = Mock()
+        matcher.match.return_value = "custom"
+        self.processor.matcher = matcher
+        record = self.purchase("fixture-injected")
+        self.database.save_email(record, "Credit")
+        self.processor.process()
+        matcher.match.assert_called_once_with(record.body_text, "debit")
+        self.assertEqual(self.database.connection.execute("SELECT category FROM transactions").fetchall(), [("custom",)])

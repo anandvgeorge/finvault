@@ -1,13 +1,15 @@
 import logging
 
+from finvault.category_matching import CategoryMatcher
 from finvault.parsers.hdfc import HDFCParser
 
 logger = logging.getLogger(__name__)
 
 
 class TransactionProcessor:
-    def __init__(self, database):
+    def __init__(self, database, matcher: CategoryMatcher):
         self.database = database
+        self.matcher = matcher
         self.parser = HDFCParser()
 
     def process(self):
@@ -40,6 +42,7 @@ class TransactionProcessor:
                 failed_count += 1
                 continue
 
+            transaction.category = self.matcher.match(email.body_text, transaction.transaction_type)
             self.database.save_transaction(transaction)
             parsed_count += 1
 

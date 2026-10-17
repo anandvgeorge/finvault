@@ -150,9 +150,10 @@ class Database:
                 account,
                 source,
                 reference,
-                email_id
+                email_id,
+                category
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(transaction.amount),
@@ -164,6 +165,7 @@ class Database:
                 transaction.source,
                 transaction.reference,
                 transaction.email_id,
+                transaction.category,
             ),
         )
         self.connection.commit()

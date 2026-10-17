@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -60,6 +61,17 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(row, (
             "123456789.12", record.transaction_date.isoformat(), "FIXTURE-REFERENCE",
         ))
+
+    def test_initial_category_persists_and_duplicate_insert_preserves_manual_override(self):
+        self.database.save_email(email(), "UPI")
+        record = transaction(category="custom_initial")
+        self.database.save_transaction(record)
+        reopened = Database(str(self.path))
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.connection.execute("SELECT category FROM transactions").fetchall(), [("custom_initial",)])
+        reopened.update_transaction_category(1, "custom_manual")
+        self.database.save_transaction(replace(record, category="custom_new_match"))
+        self.assertEqual(reopened.connection.execute("SELECT category FROM transactions").fetchall(), [("custom_manual",)])
 
     def test_transactions_deduplicate_by_email_without_losing_distinct_emails(self):
         for message_id in ("fixture-one", "fixture-two"):

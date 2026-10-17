@@ -127,12 +127,24 @@ ignoring case and repeated whitespace; the first eligible rule wins. Rules can
 restrict matching to debit or credit. No match returns `None` (Uncategorized).
 Subject, sender, and transaction merchant fields are not matching inputs.
 
-This is step 1: the matcher is available for testing, but ingestion is not yet
-connected to it. Dashboard categories and existing transactions are unchanged.
-Test the matcher with fictional data using:
+Ingestion loads saved rules once at the start of each run and assigns categories
+to newly parsed transactions before saving them. Save changes in Settings to use
+new rules on the next run; a running ingestion keeps its original rule snapshot.
+Missing configuration or no rules leaves new transactions Uncategorized. Invalid
+configuration stops ingestion before contacting Gmail and keeps the previous
+completion timestamp. Existing transactions, including manual assignments and
+those left Uncategorized, are preserved. Applying rules to existing transactions
+is a separate future step.
+
+To check this on your host, save a rule in Settings, then run ingestion normally.
+A newly parsed transaction with a matching body and transaction type should show
+the configured category on the dashboard; unmatched transactions stay
+Uncategorized. Running ingestion again skips transactions already saved.
+
+Test matching and ingestion integration with fictional data using:
 
 ```bash
-uv run --locked python -m unittest tests.test_category_matching -v
+uv run --locked python -m unittest tests.test_category_matching tests.test_processing tests.test_ingestion -v
 ```
 
 ## Tests and CI

@@ -171,7 +171,7 @@
                 </section>
                 <section class="settings-panel" aria-labelledby="rules-heading">
                     <div class="panel-heading"><h2 id="rules-heading">Keyword rules</h2></div>
-                    <p class="help">Priority runs from top to bottom. Rules are saved now; automatic assignment is not active yet.</p>
+                    <p class="help">Rules apply to newly parsed transactions on the next ingestion run. The first matching rule wins.</p>
                     <div id="rule-list" class="rule-list"></div>
                     <div class="add-rule"><button id="add-rule" type="button" class="button">+ Add rule</button></div>
                 </section>
@@ -494,7 +494,7 @@
                     const keywords = document.createElement("textarea"); keywords.rows = 3; keywords.value = rule.keywords.join("\n"); keywords.placeholder = "One keyword per line"; keywords.spellcheck = false;
                     keywords.oninput = () => { rule.keywords = keywords.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); session.changed(); };
                     const keywordField = field("Keywords", keywords, `rule-${index}-keywords`); keywordField.className = "keyword-field";
-                    const hint = document.createElement("p"); hint.className = "field-help"; hint.id = `rule-${index}-hint`; hint.textContent = "One keyword per line. Any keyword can match, ignoring case.";
+                    const hint = document.createElement("p"); hint.className = "field-help"; hint.id = `rule-${index}-hint`; hint.textContent = "One keyword per line. Matches email body only, ignoring case.";
                     keywords.setAttribute("aria-describedby", hint.id); keywordField.appendChild(hint);
                     body.append(field("Category", category, `rule-${index}-category`, `Category for rule ${index + 1}`), field("Transaction type", type, `rule-${index}-type`, `Transaction type for rule ${index + 1}`), keywordField);
                     card.append(heading, body); rules.appendChild(card);
