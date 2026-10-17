@@ -164,7 +164,7 @@
         .transaction-badge::before { font-size: 13px; }
         tr[data-type="debit"] .transaction-badge::before { content: "−"; }
         tr[data-type="credit"] .transaction-badge::before { content: "+"; }
-        .table-message { padding: 36px 16px; color: var(--muted); text-align: center; }
+        .table-message { padding: 36px 16px; color: var(--muted); font: 12px/1.7 var(--mono); text-align: center; }
         select, .category-trigger {
             appearance: none;
             max-width: 100%;
@@ -368,8 +368,30 @@
 
         const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-        const CATEGORY_OPTIONS = [["", "Uncategorized"], ["necessary", "Necessary"], ["lifestyle", "Lifestyle"],
-            ["eat_out", "Eat out"], ["investment", "Investment"], ["salary", "Salary"], ["lend", "Lend"], ["other", "Other"]];
+        class CategoryCatalog {
+            constructor(categories = []) {
+                if (!Array.isArray(categories) || categories.some(category =>
+                    !category || typeof category.id !== "string" || !category.id ||
+                    typeof category.label !== "string" || !category.label.trim()) ||
+                    new Set(categories.map(category => category.id)).size !== categories.length) {
+                    throw new Error("Invalid category catalog");
+                }
+                this.categories = categories.map(({ id, label }) => ({ id, label }));
+            }
+
+            options(selected = null) {
+                const options = [["", "Uncategorized"], ...this.categories.map(({ id, label }) => [id, label])];
+                // Preserve a saved assignment even when its definition was removed.
+                if (selected && !this.categories.some(category => category.id === selected)) {
+                    options.push([selected, `${selected} (unavailable)`]);
+                }
+                return options;
+            }
+        }
+
+        async function fetchCategoryCatalog() {
+            return new CategoryCatalog(await fetchJSON("/categories"));
+        }
 
         class PeriodSelection {
             constructor(years, now = new Date()) {
@@ -790,6 +812,7 @@
             const sortButtons = document.querySelectorAll("[data-sort-field]");
             const categoryMenu = new CategoryMenu(document);
             const categoryControls = new Map();
+            let categoryCatalog = new CategoryCatalog();
             const categoryEditor = new CategoryEditor(saveCategory, (id, state) => {
                 const controls = categoryControls.get(id);
                 if (controls) updateCategoryControl(controls);
@@ -858,10 +881,7 @@
                     const category = document.createElement("select");
                     category.setAttribute("aria-label", `Category for ${transaction.merchant} on ${transaction.transaction_date.slice(0, 10)}`);
                     const selected = categoryEditor.stateFor(transaction).category;
-                    const options = CATEGORY_OPTIONS.slice();
-                    if (selected && !options.some(([value]) => value === selected)) {
-                        options.push([selected, selected]);
-                    }
+                    const options = categoryCatalog.options(selected);
                     for (const [value, label] of options) {
                         const option = document.createElement("option");
                         option.value = value;
@@ -1012,7 +1032,9 @@
                 status.className = "data-status";
                 status.textContent = "Loading calendar…";
                 try {
-                    selection = new PeriodSelection(await fetchJSON("/years"));
+                    const [years, catalog] = await Promise.all([fetchJSON("/years"), fetchCategoryCatalog()]);
+                    categoryCatalog = catalog;
+                    selection = new PeriodSelection(years);
                     yearsContainer.replaceChildren();
                     yearRows.clear();
                     for (const year of selection.years) {
@@ -1060,9 +1082,9 @@
                 } catch (error) {
                     cards.setAttribute("aria-busy", "false");
                     table.setAttribute("aria-busy", "false");
-                    selectionLabel.textContent = "Calendar unavailable";
+                    selectionLabel.textContent = "Filters unavailable";
                     status.className = "data-status error";
-                    status.textContent = "Couldn’t load the calendar. Try again.";
+                    status.textContent = "Couldn’t load filters. Try again.";
                     tableMessage("Unable to load transactions.");
                     retry.hidden = false;
                     retry.onclick = loadYears;

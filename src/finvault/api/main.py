@@ -1,22 +1,52 @@
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi.responses import FileResponse
 from fastapi import FastAPI, HTTPException, Path as PathParameter
 from pydantic import BaseModel, ConfigDict
 
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
+from finvault.categories import CategoryConfigError, CategoryStore, TomlCategoryStore
 from finvault.database.database import Database
+from finvault.models.category import Category, CategoryId, CategorySettings
 
 app = FastAPI()
 
 database = Database()
+category_store: CategoryStore = TomlCategoryStore()
 
 
 class CategoryUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    category: Literal["necessary", "lifestyle", "eat_out", "investment", "salary", "lend", "other"] | None
+    category: CategoryId | None
+
+
+def category_settings() -> CategorySettings:
+    try:
+        return category_store.load()
+    except CategoryConfigError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.get("/categories", response_model=list[Category])
+def get_categories():
+    """Public catalog for transaction dropdowns; never includes keyword rules."""
+    return list(category_settings().categories)
+
+
+@app.get("/settings/categories", response_model=CategorySettings)
+def get_category_settings():
+    return category_settings()
+
+
+@app.put("/settings/categories", response_model=CategorySettings)
+def save_category_settings(settings: CategorySettings):
+    try:
+        category_store.save(settings)
+    except CategoryConfigError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return settings
 
 
 @app.get("/")
@@ -147,6 +177,8 @@ def update_transaction_category(
     update: CategoryUpdate,
 ):
     """Save a category for one transaction; null clears its category."""
+    if update.category is not None and update.category not in {category.id for category in category_settings().categories}:
+        raise HTTPException(status_code=422, detail="Unknown category")
     if not database.update_transaction_category(transaction_id, update.category):
         raise HTTPException(status_code=404, detail="Transaction not found")
     return {"id": transaction_id, "category": update.category}

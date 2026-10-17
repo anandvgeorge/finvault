@@ -19,6 +19,7 @@ flowchart LR
     Emails -->|Without a saved transaction| Parser["Transaction parser"]
     Parser --> Transactions
     Transactions -->|Transaction data| API["FastAPI + Uvicorn"]
+    Categories["Private categories.toml"] -->|Category definitions| API
     API -->|HTML + JSON| Dashboard["Browser dashboard"]
 ```
 
@@ -50,6 +51,45 @@ uv run --locked uvicorn finvault.api.main:app --host 0.0.0.0 --reload
 On the same machine, open <http://127.0.0.1:8000/>. From another machine over
 Tailscale, open `http://<server-tailscale-ip>:8000/`. The server listens on all
 IPv4 interfaces, including the LAN. Both commands use `data/finvault.db`.
+
+## Categories
+
+Category IDs and labels come entirely from `categories.toml` in the server's
+working directory. Create your private file from the tracked example:
+
+```bash
+cp categories.example.toml categories.toml
+chmod 600 categories.toml
+```
+
+On the laptop, keep this file in the project root. On the Pi, keep it at
+`~/.local/share/finvault/categories.toml`, alongside the runtime data and OAuth
+files, outside `current/` and `releases/`. After deploying this version, initialize
+it on the Pi if you have not already copied your private config there:
+
+```bash
+cp "$HOME/.local/share/finvault/current/categories.example.toml" \
+  "$HOME/.local/share/finvault/categories.toml"
+chmod 600 "$HOME/.local/share/finvault/categories.toml"
+```
+
+Only `categories.example.toml` belongs in Git; `categories.toml` is ignored.
+Set `FINVAULT_CATEGORIES_CONFIG` to override the file path if needed. A missing
+file provides an empty catalog; an invalid file produces an explicit error.
+
+Edit `[categories]` to add IDs and labels. Keep IDs stable when renaming labels
+so existing transaction assignments remain intact. Refresh the dashboard to load
+changes on desktop and mobile; no server restart is needed. Removed definitions
+remain visible as unavailable on transactions that already use them.
+
+- `GET /categories`: category IDs and labels only, without private keyword rules.
+- `GET /settings/categories`: complete category and rule settings.
+- `PUT /settings/categories`: validate and replace the complete settings, saved
+  atomically with file permissions `600`.
+
+The settings API uses `{"categories": [{"id": "custom", "label": "Custom"}],
+"rules": []}`. Keyword rules can be stored now using the example's format, but
+automatic assignment and the Settings page are not implemented yet.
 
 ## Tests and CI
 

@@ -3,6 +3,7 @@
 import asyncio
 import importlib.util
 import json
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -13,6 +14,7 @@ from urllib.parse import urlencode
 from fastapi import HTTPException
 
 import finvault.api
+from finvault.categories import TomlCategoryStore
 from finvault.database.database import Database
 from tests.fixtures import email, transaction
 
@@ -21,12 +23,18 @@ class ApiTests(unittest.TestCase):
     def setUp(self):
         self.database = Database(":memory:")
         self.addCleanup(self.database.close)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.category_store = TomlCategoryStore(Path(directory.name) / "categories.toml")
+        example = Path(__file__).resolve().parents[1] / "categories.example.toml"
+        self.category_store.save(TomlCategoryStore(example).load())
         # The module opens a database at import time. Load an isolated instance
         # while substituting our in-memory DB, so real data is never opened.
         path = Path(finvault.api.__file__).with_name("main.py")
         spec = importlib.util.spec_from_file_location("finvault_api_fixture", path)
         module = importlib.util.module_from_spec(spec)
-        with patch("finvault.database.database.Database", return_value=self.database):
+        with patch("finvault.database.database.Database", return_value=self.database), \
+                patch("finvault.categories.TomlCategoryStore", return_value=self.category_store):
             spec.loader.exec_module(module)
         self.api = module
 
@@ -151,7 +159,7 @@ class ApiTests(unittest.TestCase):
         self.save_transaction("fixture-two", transaction_date=datetime(2001, 1, 1))
         original_rows = self.api.get_transactions()
         original_totals = self.api.get_overview()
-        for category in ("necessary", "lifestyle", "eat_out", "investment", "salary", "lend", "other", "other"):
+        for category in [category.id for category in self.category_store.load().categories]:
             with self.subTest(category=category):
                 self.assertEqual(self.request(
                     "/transactions/1/category", method="PATCH", body={"category": category},
@@ -168,6 +176,64 @@ class ApiTests(unittest.TestCase):
             "/transactions/1/category", method="PATCH", body={"category": None},
         ), (200, {"id": 1, "category": None}))
         self.assertIsNone(self.api.get_transactions()[0]["category"])
+
+    def test_settings_save_persists_custom_categories_and_keeps_keywords_out_of_catalog(self):
+        self.save_transaction("fixture-one")
+        payload = {
+            "categories": [{"id": "travel", "label": "Travel"}, {"id": "custom", "label": "Custom"}],
+            "rules": [
+                {"category": "custom", "keywords": ["fictional private keyword"], "transaction_type": "credit"},
+                {"category": "travel", "keywords": ["example transport"], "transaction_type": None},
+            ],
+        }
+        self.assertEqual(self.request("/settings/categories", method="PUT", body=payload), (200, payload))
+        self.assertEqual(self.request("/settings/categories"), (200, payload))
+        self.assertEqual(TomlCategoryStore(self.category_store.path).load().model_dump(mode="json"), payload)
+        self.assertEqual(self.request("/categories"), (200, payload["categories"]))
+        self.assertEqual(self.request("/transactions/1/category", method="PATCH", body={"category": "travel"}),
+                         (200, {"id": 1, "category": "travel"}))
+        payload["categories"][0]["label"] = "Trips"
+        self.assertEqual(self.request("/settings/categories", method="PUT", body=payload)[0], 200)
+        self.assertEqual(self.request("/categories")[1][0]["label"], "Trips")
+        self.assertEqual(self.api.get_transactions()[0]["category"], "travel")
+
+    def test_invalid_settings_are_rejected_without_changing_private_file(self):
+        original = self.category_store.path.read_bytes()
+        for payload in (
+            {},
+            {"categories": [{"id": "custom", "label": ""}]},
+            {"categories": [{"id": "custom", "label": "One"}, {"id": "custom", "label": "Two"}]},
+            {"rules": [{"category": "missing", "keywords": ["example"]}]},
+            {"extra": "example"},
+            [],
+        ):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.request("/settings/categories", method="PUT", body=payload)[0], 422)
+                self.assertEqual(self.category_store.path.read_bytes(), original)
+
+    def test_config_edits_are_live_and_missing_file_has_no_builtin_fallback(self):
+        self.category_store.path.unlink()
+        self.assertEqual(self.request("/categories"), (200, []))
+        self.assertEqual(self.request("/settings/categories"), (200, {"categories": [], "rules": []}))
+        self.save_transaction("fixture-one")
+        self.assertEqual(self.request("/transactions/1/category", method="PATCH", body={"category": "salary"})[0], 422)
+        self.category_store.path.write_text('[categories]\ncustom = "Custom"\n')
+        self.assertEqual(self.request("/categories"), (200, [{"id": "custom", "label": "Custom"}]))
+        self.assertEqual(self.request("/transactions/1/category", method="PATCH", body={"category": "custom"})[0], 200)
+        self.assertEqual(self.request("/settings/categories", method="PUT", body={"categories": [], "rules": []})[0], 200)
+        self.assertEqual(self.api.get_transactions()[0]["category"], "custom")
+        self.assertEqual(self.request("/transactions/1/category", method="PATCH", body={"category": "custom"})[0], 422)
+        self.assertEqual(self.request("/transactions/1/category", method="PATCH", body={"category": None})[0], 200)
+
+    def test_invalid_file_returns_safe_errors_and_can_be_repaired_through_settings_api(self):
+        self.category_store.path.write_text('private = "fictional private keyword"\n')
+        for path in ("/categories", "/settings/categories"):
+            with self.subTest(path=path):
+                status, body = self.request(path)
+                self.assertEqual(status, 503)
+                self.assertNotIn("fictional private keyword", json.dumps(body))
+        self.assertEqual(self.request("/settings/categories", method="PUT", body={"categories": [], "rules": []})[0], 200)
+        self.assertEqual(self.request("/categories"), (200, []))
 
     def test_category_update_returns_404_for_a_missing_transaction(self):
         self.save_transaction("fixture-one")
