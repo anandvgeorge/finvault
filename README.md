@@ -106,11 +106,12 @@ Old runs show “Not recorded yet” until recorded by the updated code. A runni
 release identifies its own commit, including after a rollback. Local checkouts
 capture Git HEAD at server startup; uncommitted edits are excluded from that ID.
 
-If the Pi runs a separately installed copy of the deploy script, update that copy
-too; application deployment alone cannot update that script. For example, after
-deploying this version, copy `current/scripts/deploy-pi.sh` to the script path
-listed by `systemctl --user cat finvault-deploy.service`, retaining its executable
-permissions. Runtime timestamps stay in the existing ignored database.
+Configure `finvault-deploy.service` to run
+`/bin/bash %h/.local/share/finvault/current/scripts/deploy-pi.sh`. Each check then
+uses the active release's script, so script changes arrive with application
+updates. See the [migration and cleanup steps](deploy/README.md#switch-an-existing-service-to-the-active-release)
+if your service still uses `~/.local/bin/finvault-deploy`. Runtime timestamps stay
+in the existing ignored database.
 
 - `GET /categories`: category IDs and labels only, without private keyword rules.
 - `GET /settings/categories`: complete category and rule settings.
@@ -174,10 +175,11 @@ flowchart TB
     end
 
     subgraph Pi["Raspberry Pi · systemd user services"]
-        Timer["finvault-deploy.timer<br/>5 min after the last check"] --> Deploy["finvault-deploy.service<br/>Deployment script"]
+        Timer["finvault-deploy.timer<br/>5 min after the last check"] --> Deploy["finvault-deploy.service<br/>bash current/scripts/deploy-pi.sh"]
         Deploy --> Clone["~/finvault<br/>Git clone"]
         Clone -->|Extract commit + uv sync --locked| Release["releases/SHA/<br/>Code + Python environment"]
         Release -->|Switch active release| Current["current symlink"]
+        Current -.->|Script for the next check| Deploy
         Current --> UI["finvault-ui.service<br/>Dashboard on port 8000"]
         Current --> Ingest["finvault-ingest.service"]
         Schedule["finvault-ingest.timer<br/>Every 15 minutes"] --> Ingest
