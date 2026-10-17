@@ -1,22 +1,62 @@
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi.responses import FileResponse
-from fastapi import FastAPI, HTTPException, Path as PathParameter
+from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Path as PathParameter, Response
 from pydantic import BaseModel, ConfigDict
 
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
+from finvault.categories import CategoryConfigError, CategoryStore, TomlCategoryStore
 from finvault.database.database import Database
+from finvault.models.category import Category, CategoryId, CategorySettings
+from finvault.runtime import RuntimeInfo
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 database = Database()
+category_store: CategoryStore = TomlCategoryStore()
+runtime_info = RuntimeInfo(Path(__file__).resolve().parents[3])
+
+
+@app.get("/settings/status")
+def get_system_status(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return {**database.runtime_status(), "commit_id": runtime_info.commit_id}
 
 
 class CategoryUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    category: Literal["necessary", "lifestyle", "eat_out", "investment", "salary", "lend", "other"] | None
+    category: CategoryId | None
+
+
+def category_settings() -> CategorySettings:
+    try:
+        return category_store.load()
+    except CategoryConfigError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.get("/categories", response_model=list[Category])
+def get_categories():
+    """Public catalog for transaction dropdowns; never includes keyword rules."""
+    return list(category_settings().categories)
+
+
+@app.get("/settings/categories", response_model=CategorySettings)
+def get_category_settings():
+    return category_settings()
+
+
+@app.put("/settings/categories", response_model=CategorySettings)
+def save_category_settings(settings: CategorySettings):
+    try:
+        category_store.save(settings)
+    except CategoryConfigError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return settings
 
 
 @app.get("/")
@@ -24,6 +64,11 @@ def dashboard():
     return FileResponse(
         Path(__file__).parent / "static" / "index.html"
     )
+
+
+@app.get("/settings")
+def settings_page():
+    return FileResponse(Path(__file__).parent / "static" / "settings.html")
 
 
 @app.get("/years")
@@ -147,6 +192,8 @@ def update_transaction_category(
     update: CategoryUpdate,
 ):
     """Save a category for one transaction; null clears its category."""
+    if update.category is not None and update.category not in {category.id for category in category_settings().categories}:
+        raise HTTPException(status_code=422, detail="Unknown category")
     if not database.update_transaction_category(transaction_id, update.category):
         raise HTTPException(status_code=404, detail="Transaction not found")
     return {"id": transaction_id, "category": update.category}

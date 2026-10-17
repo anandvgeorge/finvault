@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from finvault.models.email import Email
 
@@ -51,7 +51,27 @@ class Database:
             """
         )
 
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
         self.connection.commit()
+
+    def record_ingestion_completed(self):
+        """Record completed runs, including those that find no new emails."""
+        self.connection.execute(
+            "INSERT INTO app_metadata (key, value) VALUES ('last_ingestion_at', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+        self.connection.commit()
+
+    def runtime_status(self) -> dict[str, str | None]:
+        """Read the three status values together, including absent values."""
+        keys = ("last_ingestion_at", "last_deploy_check_at", "last_deploy_check_status")
+        rows = dict(self.connection.execute(
+            "SELECT key, value FROM app_metadata WHERE key IN (?, ?, ?)", keys,
+        ).fetchall())
+        return {key: rows.get(key) for key in keys}
 
     def save_email(self, email: Email, label: str):
         self.connection.execute(

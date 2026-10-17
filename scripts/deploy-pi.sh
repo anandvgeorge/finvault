@@ -11,12 +11,41 @@ timer=finvault-ingest.timer
 ingest=finvault-ingest.service
 ui=finvault-ui.service
 temporary_link="$state/.current-$$"
+check_started=0
+check_result=failed
+check_python=
 resume_timer=0
 rollback_needed=0
 previous=
 
 log() { printf '%s\n' "$*"; }
 fail() { log "ERROR: $*" >&2; exit 1; }
+
+record_check() {
+    # Use only the existing interpreter's standard library, so this also works
+    # before the first release containing the status API has been installed.
+    "$check_python" - "$state/data/finvault.db" "$1" <<'PY'
+import sqlite3
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Never create a new database accidentally if the runtime path is incorrect.
+connection = sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + "?mode=rw", uri=True, timeout=10)
+try:
+    with connection:
+        connection.execute("CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        values = [("last_deploy_check_status", sys.argv[2])]
+        if sys.argv[2] == "checking":
+            values.append(("last_deploy_check_at", datetime.now(timezone.utc).isoformat()))
+        connection.executemany(
+            "INSERT INTO app_metadata (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value", values,
+        )
+finally:
+    connection.close()
+PY
+}
 
 switch_release() {
     if [[ -L "$temporary_link" ]]; then
@@ -74,6 +103,15 @@ finish() {
     if [[ -L "$temporary_link" ]]; then
         unlink -- "$temporary_link"
     fi
+    if (( check_started )); then
+        if (( status != 0 )); then
+            check_result=failed
+        fi
+        if ! record_check "$check_result"; then
+            log "ERROR: could not record the update check result." >&2
+            status=1
+        fi
+    fi
     exit "$status"
 }
 
@@ -99,10 +137,14 @@ for unit in "$ui" "$ingest"; do
 done
 
 # Fetch code with the clone's existing read-only deploy key; do not change its checkout.
+check_python="$previous/.venv/bin/python"
+record_check checking
+check_started=1
 git -C "$repo" fetch --no-tags origin refs/heads/production:refs/remotes/origin/production
 commit=$(git -C "$repo" rev-parse --verify 'refs/remotes/origin/production^{commit}')
 release="$state/releases/$commit"
 if [[ "$previous" == "$release" ]]; then
+    check_result=unchanged
     log "Already running production commit $commit."
     exit 0
 fi
@@ -142,4 +184,5 @@ switch_release "$release"
 systemctl --user restart "$ui"
 healthy
 rollback_needed=0
+check_result=deployed
 log "Deployed production commit $commit."

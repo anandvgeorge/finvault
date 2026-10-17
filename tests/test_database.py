@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -16,6 +17,20 @@ class DatabaseTests(unittest.TestCase):
         self.path = Path(self.directory.name) / "nested" / "fixture.db"
         self.database = Database(str(self.path))
         self.addCleanup(self.database.close)
+
+    def test_ingestion_completion_is_unknown_until_recorded_and_survives_reopening(self):
+        self.assertIsNone(self.database.runtime_status()["last_ingestion_at"])
+        before = datetime.now(timezone.utc)
+        self.database.record_ingestion_completed()
+        first = self.database.runtime_status()["last_ingestion_at"]
+        self.database.record_ingestion_completed()
+        reopened = Database(str(self.path))
+        self.addCleanup(reopened.close)
+        timestamp = datetime.fromisoformat(reopened.runtime_status()["last_ingestion_at"])
+        self.assertGreaterEqual(timestamp, datetime.fromisoformat(first))
+        self.assertGreaterEqual(timestamp, before)
+        self.assertLessEqual(timestamp, datetime.now(timezone.utc))
+        self.assertEqual(reopened.get_emails(), [])
 
     def test_email_persists_after_reopening_with_unicode_and_sql_characters(self):
         record = email(body="Synthetic café payment: '); DROP TABLE emails; --")

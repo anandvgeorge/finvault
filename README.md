@@ -19,6 +19,7 @@ flowchart LR
     Emails -->|Without a saved transaction| Parser["Transaction parser"]
     Parser --> Transactions
     Transactions -->|Transaction data| API["FastAPI + Uvicorn"]
+    Categories["Private categories.toml"] -->|Category definitions| API
     API -->|HTML + JSON| Dashboard["Browser dashboard"]
 ```
 
@@ -51,6 +52,76 @@ On the same machine, open <http://127.0.0.1:8000/>. From another machine over
 Tailscale, open `http://<server-tailscale-ip>:8000/`. The server listens on all
 IPv4 interfaces, including the LAN. Both commands use `data/finvault.db`.
 
+## Categories
+
+Category IDs and labels come entirely from `categories.toml` in the server's
+working directory. Create your private file from the tracked example:
+
+```bash
+cp categories.example.toml categories.toml
+chmod 600 categories.toml
+```
+
+On the laptop, keep this file in the project root. On the Pi, keep it at
+`~/.local/share/finvault/categories.toml`, alongside the runtime data and OAuth
+files, outside `current/` and `releases/`. After deploying this version, initialize
+it on the Pi if you have not already copied your private config there:
+
+```bash
+cp "$HOME/.local/share/finvault/current/categories.example.toml" \
+  "$HOME/.local/share/finvault/categories.toml"
+chmod 600 "$HOME/.local/share/finvault/categories.toml"
+```
+
+Only `categories.example.toml` belongs in Git; `categories.toml` is ignored.
+Set `FINVAULT_CATEGORIES_CONFIG` to override the file path if needed. A missing
+file provides an empty catalog; an invalid file produces an explicit error.
+
+Edit `[categories]` to add IDs and labels. Keep IDs stable when renaming labels
+so existing transaction assignments remain intact. Refresh the dashboard to load
+changes on desktop and mobile; no server restart is needed. Removed definitions
+remain visible as unavailable on transactions that already use them.
+
+Use **Settings** at the dashboard's top right (or open `/settings`) to edit
+categories and keyword rules. Add categories, rename labels, and move rules up or
+down to change priority. On desktop, category tiles stay visible beside the rules
+as you scroll; click or tap a name to rename it, then Enter to finish or Escape
+to cancel that rename. Enter one keyword per line and choose Either, Debit, or
+Credit for each rule. Save changes writes the server's private `categories.toml`;
+Discard reloads its saved settings. Editing fields alone does not write the file.
+Saving rewrites TOML formatting and removes comments. Laptop and Pi settings remain
+separate; opening the Pi's page from your laptop edits the Pi's file.
+
+Settings also shows the last completed ingestion, running Git commit (linked to
+GitHub), and last GitHub update check with its result. Timestamps display in IST;
+use Refresh to reload them. SQLite's `app_metadata` table holds one row per value,
+updated in place rather than keeping a run history. Ingestion records completion
+even with no new emails; exceptions leave the previous completion time intact.
+Parsing warnings do not prevent a run from completing.
+
+`scripts/deploy-pi.sh` records the check time immediately before fetching GitHub,
+then records Checking, No updates, Updated, or Failed. Failed fetches count as
+attempted checks; overlapping invocations that skip the deployment lock do not.
+Old runs show “Not recorded yet” until recorded by the updated code. A running
+release identifies its own commit, including after a rollback. Local checkouts
+capture Git HEAD at server startup; uncommitted edits are excluded from that ID.
+
+If the Pi runs a separately installed copy of the deploy script, update that copy
+too; application deployment alone cannot update that script. For example, after
+deploying this version, copy `current/scripts/deploy-pi.sh` to the script path
+listed by `systemctl --user cat finvault-deploy.service`, retaining its executable
+permissions. Runtime timestamps stay in the existing ignored database.
+
+- `GET /categories`: category IDs and labels only, without private keyword rules.
+- `GET /settings/categories`: complete category and rule settings.
+- `GET /settings/status`: ingestion completion, running commit, update-check time and result.
+- `PUT /settings/categories`: validate and replace the complete settings, saved
+  atomically with file permissions `600`.
+
+The settings API uses `{"categories": [{"id": "custom", "label": "Custom"}],
+"rules": []}`. Keyword rules can be configured and saved, but automatic
+assignment is not implemented yet.
+
 ## Tests and CI
 
 Run the unit tests locally:
@@ -59,10 +130,10 @@ Run the unit tests locally:
 uv run --locked python -m unittest discover -s tests -v
 ```
 
-Run dashboard selection and loading tests with Node.js (no npm install needed):
+Run dashboard and settings interaction tests with Node.js (no npm install needed):
 
 ```bash
-node --test tests/dashboard.test.cjs
+node --test tests/*.test.cjs
 ```
 
 [GitHub Actions CI](.github/workflows/ci.yml) runs the same tests on pushes and

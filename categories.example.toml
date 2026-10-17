@@ -1,0 +1,21 @@
+# Copy to categories.toml in your working directory; the real file is ignored.
+# Pi working directory: ~/.local/share/finvault
+# IDs are stored in SQLite. Keep IDs stable when changing display labels.
+
+[categories]
+necessary = "Necessary"
+lifestyle = "Lifestyle"
+eat_out = "Eat out"
+investment = "Investment"
+salary = "Salary"
+lend = "Lend"
+other = "Other"
+
+# Rules are saved and validated now; automatic assignment is a later step.
+# Any keyword will match, ignoring case; rules are evaluated in order.
+# Omit transaction_type to allow either debit or credit.
+# Use fictional examples here. Put personal keywords only in categories.toml.
+# [[rules]]
+# category = "salary"
+# transaction_type = "credit"
+# keywords = ["example employer", "payroll"]

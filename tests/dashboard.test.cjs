@@ -13,8 +13,9 @@ function dashboard() {
         document: { addEventListener() {} },
         fetch: async () => { throw new Error("Unexpected network request"); },
     });
+    vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryMenu, CategoryEditor, CATEGORY_OPTIONS, saveCategory, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
+    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryMenu, CategoryEditor, CategoryCatalog, fetchCategoryCatalog, saveCategory, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
 }
 
 function selection(years = [2024, 2025]) {
@@ -160,7 +161,7 @@ test("visibility can change while loading and a fresh page starts visible again"
     assert.equal(fresh.visible, true);
 });
 
-function categoryMenu() {
+function categoryMenu(options = {}) {
     const listeners = new Map();
     const document = {
         addEventListener(name, handler) { listeners.set(name, handler); },
@@ -192,11 +193,24 @@ function categoryMenu() {
     select.setAttribute("aria-label", "Category for Example Shop");
     document.body.appendChild(select);
     const { CategoryMenu } = dashboard();
-    const menu = new CategoryMenu(document);
+    const menu = new CategoryMenu(document, options);
     const button = menu.enhance(select);
     const key = (key, extra = {}) => button.onkeydown({ key, preventDefault() {}, ...extra });
     return { menu, button, select, listeners, key };
 }
+
+test("shared menus support rule-specific IDs and triggers without changing selection events", () => {
+    const { menu, button, select, key } = categoryMenu({ id: "rule-menu", triggerClass: "rule-trigger" });
+    assert.equal(menu.menu.id, "rule-menu");
+    assert.equal(button.className, "rule-trigger");
+    button.onclick();
+    key("End");
+    assert.equal(button.getAttribute("aria-activedescendant"), "rule-menu-5");
+    key("Enter");
+    assert.equal(select.selectedIndex, 5);
+    assert.equal(select.lastEvent, "change");
+    assert.equal(button.textContent, "Other");
+});
 
 test("category menu previews keyboard choices, Escape cancels, and Enter commits", () => {
     const { menu, button, select, key } = categoryMenu();
@@ -286,10 +300,34 @@ test("category menu closes before its change handler runs, and unchanged choices
     assert.equal(changes, 1);
 });
 
-test("category options include Eat out and Lend with the API values", () => {
-    const { CATEGORY_OPTIONS } = dashboard();
-    assert.equal(CATEGORY_OPTIONS.find(([value]) => value === "eat_out")[1], "Eat out");
-    assert.equal(CATEGORY_OPTIONS.find(([value]) => value === "lend")[1], "Lend");
+test("category options come only from the supplied catalog and preserve unknown assignments", () => {
+    const { CategoryCatalog } = dashboard();
+    const empty = new CategoryCatalog();
+    assert.equal(JSON.stringify(empty.options()), JSON.stringify([["", "Uncategorized"]]));
+    const catalog = new CategoryCatalog([
+        { id: "transport", label: "Travel" }, { id: "custom", label: "Example <img src=x>" },
+    ]);
+    assert.equal(JSON.stringify(catalog.options()), JSON.stringify([
+        ["", "Uncategorized"], ["transport", "Travel"], ["custom", "Example <img src=x>"],
+    ]));
+    assert.equal(catalog.options("legacy").at(-1)[0], "legacy");
+    assert.equal(catalog.options("transport").length, 3);
+});
+
+test("catalog fetch loads configured labels and rejects errors without built-in fallback categories", async () => {
+    const { fetchCategoryCatalog, CategoryCatalog, context } = dashboard();
+    context.fetch = async url => {
+        assert.equal(url, "/categories");
+        return { ok: true, json: async () => [{ id: "transport", label: "Travel" }] };
+    };
+    const catalog = await fetchCategoryCatalog();
+    assert.equal(catalog.options()[1][1], "Travel");
+    context.fetch = async () => ({ ok: false, status: 503 });
+    await assert.rejects(fetchCategoryCatalog());
+    for (const value of [null, {}, [{ id: "x", label: "" }], [{ id: 1, label: "Example" }],
+        [{ id: "x", label: "One" }, { id: "x", label: "Two" }]]) {
+        assert.throws(() => new CategoryCatalog(value));
+    }
 });
 
 test("category saves use PATCH with JSON and null clears a selection", async () => {

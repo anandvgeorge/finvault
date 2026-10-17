@@ -39,8 +39,8 @@ jobs:
       - name: Run unit tests
         run: uv run --locked python -m unittest discover -s tests -v
 
-      - name: Run dashboard interaction tests
-        run: node --test tests/dashboard.test.cjs
+      - name: Run UI interaction tests
+        run: node --test tests/*.test.cjs
 
   promote-production:
     name: Promote production

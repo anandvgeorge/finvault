@@ -16,17 +16,19 @@ def main():
     gmail = GmailClient()
     database = Database()
 
-    ingestor = EmailIngestor(gmail, database)
+    try:
+        ingestor = EmailIngestor(gmail, database)
 
-    ingestor.ingest_label("UPI")
-    ingestor.ingest_label("Credit card")
-    ingestor.ingest_label("Credit")
-    ingestor.ingest_label("Debit card")
+        ingestor.ingest_label("UPI")
+        ingestor.ingest_label("Credit card")
+        ingestor.ingest_label("Credit")
+        ingestor.ingest_label("Debit card")
 
-    processor = TransactionProcessor(database)
-    processor.process()
-
-    database.close()
+        processor = TransactionProcessor(database)
+        processor.process()
+        database.record_ingestion_completed()
+    finally:
+        database.close()
 
     logger.info("FinVault ingestion completed")
     logger.info("-------------------------------")
