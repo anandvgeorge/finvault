@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from finvault.database.database import Database
+from finvault.category_matching import KeywordCategoryMatcher
+from finvault.models.category import CategorySettings
 from finvault.models.email import Email
 from finvault.parsers.hdfc import HDFCParser
 from finvault.processing.transaction_processor import TransactionProcessor
@@ -200,7 +202,7 @@ class HDFCParserTests(unittest.TestCase):
         )
         database.save_email(email, "Credit")
         self.assertEqual(len(database.get_emails(unprocessed_only=True)), 1)
-        processor = TransactionProcessor(database)
+        processor = TransactionProcessor(database, KeywordCategoryMatcher(CategorySettings(categories=())))
         processor.process()
         self.assertEqual(database.get_emails(unprocessed_only=True), [])
         processor.process()
@@ -375,7 +377,7 @@ class HDFCParserTests(unittest.TestCase):
             "account ending in XX0000. Date: 13-10-01 Sender: Example\nSender\n"
             "UPI Reference No.: FIXTURE-REFERENCE"
         ), "Credit")
-        processor = TransactionProcessor(database)
+        processor = TransactionProcessor(database, KeywordCategoryMatcher(CategorySettings(categories=())))
         processor.process()
         processor.process()
         self.assertEqual(database.connection.execute(
@@ -457,7 +459,7 @@ class HDFCParserTests(unittest.TestCase):
             "otp",
         ), "Credit")
         database.save_email(self.email("Unrecognized transaction format", "unknown"), "Credit")
-        processor = TransactionProcessor(database)
+        processor = TransactionProcessor(database, KeywordCategoryMatcher(CategorySettings(categories=())))
         with self.assertLogs("finvault.processing.transaction_processor", level="DEBUG") as logs:
             processor.process()
         warnings = [record for record in logs.records if record.levelname == "WARNING"]
@@ -593,7 +595,7 @@ class HDFCTimestampTests(unittest.TestCase):
             "Rs.42.50 is debited towards VPA payer@example.invalid (Example Merchant) on 13-10-01.",
         )
         database.save_email(record, "UPI")
-        processor = TransactionProcessor(database)
+        processor = TransactionProcessor(database, KeywordCategoryMatcher(CategorySettings(categories=())))
         processor.process()
         processor.process()
         self.assertEqual(database.connection.execute("SELECT transaction_date FROM transactions").fetchall(),

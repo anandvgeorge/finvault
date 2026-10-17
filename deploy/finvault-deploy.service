@@ -1,0 +1,9 @@
+[Unit]
+Description=Deploy tested FinVault production code
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash %h/.local/share/finvault/current/scripts/deploy-pi.sh
+Environment=GIT_TERMINAL_PROMPT=0
+UMask=0077
+TimeoutStartSec=20min

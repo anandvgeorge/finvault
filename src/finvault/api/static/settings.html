@@ -10,7 +10,7 @@
         :root { color-scheme: dark; --canvas: #12140f; --panel: #1b1e17; --raised: #24281e; --border: #3d4432; --ink: #efeedf; --muted: #a4ad96; --yellow: #e5c15b; --yellow-ink: #1d1b11; --error: #dfad99; --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
-        html { background: var(--canvas); scroll-padding-block: 20px 150px; scrollbar-gutter: stable; }
+        html { background: var(--canvas); scroll-padding-block: var(--header-clearance) 150px; scrollbar-gutter: stable; }
         body { max-width: 1320px; margin: 0 auto; padding: 28px 32px 40px; color: var(--ink); background-image: radial-gradient(#e5c15b0a 1px, transparent 1px); background-size: 22px 22px; font: 13px/1.6 var(--mono); }
         ::selection { background: var(--yellow); color: var(--yellow-ink); }
         a { color: inherit; }
@@ -24,7 +24,7 @@
         h2::before { content: "/"; color: var(--yellow); margin-right: 10px; }
         p { margin: 0; }
         .intro { margin-bottom: 24px; color: var(--muted); font-size: 12px; }
-        .system-status { margin-bottom: 22px; padding: 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
+        .system-status { margin-bottom: 22px; padding: 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); box-shadow: 4px 4px 0 #090c08; }
         .status-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
         .system-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; margin: 0; }
         .system-details dt { color: var(--muted); font-size: 11px; }
@@ -98,7 +98,7 @@
             .categories-panel .add-category .button { align-self: flex-end; }
         }
         @media (min-width: 1001px) and (min-height: 520px) {
-            .categories-panel { position: sticky; top: 20px; max-height: calc(100dvh - 120px); display: flex; flex-direction: column; }
+            .categories-panel { position: sticky; top: var(--header-clearance); max-height: calc(100dvh - var(--header-clearance) - 100px); display: flex; flex-direction: column; }
             .categories-panel .panel-heading, .categories-panel .help, .categories-panel .add-category { flex-shrink: 0; }
             .categories-panel .category-list { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) var(--canvas); scroll-padding-block: 6px; }
         }
@@ -113,8 +113,9 @@
             h2 { font-size: 15px; }
             .button, input, select { min-height: 44px; }
             input, select, textarea { font-size: 16px; }
-            .rule-trigger { min-height: 44px; font-size: 16px; }
-            #rule-menu .category-option { min-height: 44px; font-size: 14px; padding: 10px 22px; }
+            .rule-trigger { min-height: 42px; padding: 6px 24px 6px 7px; font: 12px/1.5 var(--mono); background-position: right 7px center; background-size: 12px; }
+            #rule-menu .category-option { min-height: 42px; padding: 12px 22px; font: 12px/1.5 var(--mono); }
+            .keyword-field textarea { padding: 6px 7px; font: 12px/1.5 var(--mono); }
             .button.icon { width: 44px; }
             .category-row { grid-template-columns: minmax(0, 1fr) 32px; }
             .category-name, .category-row input { min-height: 42px; }
@@ -170,7 +171,7 @@
                 </section>
                 <section class="settings-panel" aria-labelledby="rules-heading">
                     <div class="panel-heading"><h2 id="rules-heading">Keyword rules</h2></div>
-                    <p class="help">Priority runs from top to bottom. Rules are saved now; automatic assignment is not active yet.</p>
+                    <p class="help">Rules apply to newly parsed transactions on the next ingestion run. The first matching rule wins.</p>
                     <div id="rule-list" class="rule-list"></div>
                     <div class="add-rule"><button id="add-rule" type="button" class="button">+ Add rule</button></div>
                 </section>
@@ -493,7 +494,7 @@
                     const keywords = document.createElement("textarea"); keywords.rows = 3; keywords.value = rule.keywords.join("\n"); keywords.placeholder = "One keyword per line"; keywords.spellcheck = false;
                     keywords.oninput = () => { rule.keywords = keywords.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); session.changed(); };
                     const keywordField = field("Keywords", keywords, `rule-${index}-keywords`); keywordField.className = "keyword-field";
-                    const hint = document.createElement("p"); hint.className = "field-help"; hint.id = `rule-${index}-hint`; hint.textContent = "One keyword per line. Any keyword can match, ignoring case.";
+                    const hint = document.createElement("p"); hint.className = "field-help"; hint.id = `rule-${index}-hint`; hint.textContent = "One keyword per line. Matches email body only, ignoring case.";
                     keywords.setAttribute("aria-describedby", hint.id); keywordField.appendChild(hint);
                     body.append(field("Category", category, `rule-${index}-category`, `Category for rule ${index + 1}`), field("Transaction type", type, `rule-${index}-type`, `Transaction type for rule ${index + 1}`), keywordField);
                     card.append(heading, body); rules.appendChild(card);

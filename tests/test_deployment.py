@@ -43,7 +43,9 @@ class DeploymentTests(unittest.TestCase):
         self.git("config", "user.email", "deployment@example.test")
         self.git("remote", "add", "origin", str(self.remote))
         (self.repo / "release.txt").write_text("Synthetic release\n")
-        self.git("add", "release.txt")
+        (self.repo / "scripts").mkdir()
+        (self.repo / "scripts/deploy-pi.sh").write_bytes(SCRIPT.read_bytes())
+        self.git("add", "release.txt", "scripts/deploy-pi.sh")
         self.git("commit", "-m", "Synthetic release")
         self.commit = self.git("rev-parse", "HEAD").stdout.strip()
         self.git("push", "origin", "HEAD:refs/heads/production")
@@ -149,7 +151,7 @@ python.chmod(0o700)
 
     def deploy(self, **overrides):
         return subprocess.run(
-            ["bash", str(SCRIPT)], env={**self.environment, **overrides},
+            ["/bin/bash", str(self.current / "scripts/deploy-pi.sh")], env={**self.environment, **overrides},
             capture_output=True, text=True, timeout=15,
         )
 
@@ -194,6 +196,29 @@ python.chmod(0o700)
         self.assertGreater(self.metadata()["last_deploy_check_at"], previous_check)
         self.assertEqual(self.metadata()["last_deploy_check_status"], "unchanged")
         self.assertEqual(len(self.metadata()), 2)
+
+    def test_next_check_uses_the_new_releases_deployment_script(self):
+        self.assertEqual(self.deploy().returncode, 0)
+        script = self.repo / "scripts/deploy-pi.sh"
+        script.write_text(script.read_text().replace(
+            "record_check checking\n",
+            'log "Synthetic updated deployment controller"\nrecord_check checking\n',
+        ))
+        self.git("add", "scripts/deploy-pi.sh")
+        self.git("commit", "-m", "Synthetic controller update")
+        updated = self.git("rev-parse", "HEAD").stdout.strip()
+        self.git("push", "origin", "HEAD:refs/heads/production")
+
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Synthetic updated deployment controller", result.stdout)
+        self.assertEqual(self.current.resolve().name, updated)
+        self.events.unlink()
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Synthetic updated deployment controller", result.stdout)
+        self.assertEqual(self.event_lines(), [])
+        self.assertEqual(self.metadata()["last_deploy_check_status"], "unchanged")
 
     def test_failed_fetch_records_attempt_time_and_failure(self):
         self.git("remote", "set-url", "origin", str(self.home / "missing-remote.git"))

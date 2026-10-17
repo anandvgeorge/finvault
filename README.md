@@ -106,11 +106,12 @@ Old runs show “Not recorded yet” until recorded by the updated code. A runni
 release identifies its own commit, including after a rollback. Local checkouts
 capture Git HEAD at server startup; uncommitted edits are excluded from that ID.
 
-If the Pi runs a separately installed copy of the deploy script, update that copy
-too; application deployment alone cannot update that script. For example, after
-deploying this version, copy `current/scripts/deploy-pi.sh` to the script path
-listed by `systemctl --user cat finvault-deploy.service`, retaining its executable
-permissions. Runtime timestamps stay in the existing ignored database.
+Configure `finvault-deploy.service` to run
+`/bin/bash %h/.local/share/finvault/current/scripts/deploy-pi.sh`. Each check then
+uses the active release's script, so script changes arrive with application
+updates. See the [migration and cleanup steps](deploy/README.md#switch-an-existing-service-to-the-active-release)
+if your service still uses `~/.local/bin/finvault-deploy`. Runtime timestamps stay
+in the existing ignored database.
 
 - `GET /categories`: category IDs and labels only, without private keyword rules.
 - `GET /settings/categories`: complete category and rule settings.
@@ -119,8 +120,68 @@ permissions. Runtime timestamps stay in the existing ignored database.
   atomically with file permissions `600`.
 
 The settings API uses `{"categories": [{"id": "custom", "label": "Custom"}],
-"rules": []}`. Keyword rules can be configured and saved, but automatic
-assignment is not implemented yet.
+"rules": []}`. Keyword rules can be configured and saved. The standalone
+`KeywordCategoryMatcher` accepts validated settings, plain-text email body, and
+transaction type. It matches any configured keyword as a literal substring,
+ignoring case and repeated whitespace; the first eligible rule wins. Rules can
+restrict matching to debit or credit. No match returns `None` (Uncategorized).
+Subject, sender, and transaction merchant fields are not matching inputs.
+
+Ingestion loads saved rules once at the start of each run and assigns categories
+to newly parsed transactions before saving them. Save changes in Settings to use
+new rules on the next run; a running ingestion keeps its original rule snapshot.
+Missing configuration or no rules leaves new transactions Uncategorized. Invalid
+configuration stops ingestion before contacting Gmail and keeps the previous
+completion timestamp. Normal ingestion preserves existing transactions, including
+manual assignments and those left Uncategorized.
+
+To check this on your host, save a rule in Settings, then run ingestion normally.
+A newly parsed transaction with a matching body and transaction type should show
+the configured category on the dashboard; unmatched transactions stay
+Uncategorized. Running ingestion again skips transactions already saved.
+
+Test matching and ingestion integration with fictional data using:
+
+```bash
+uv run --locked python -m unittest tests.test_category_matching tests.test_processing tests.test_ingestion -v
+```
+
+### Apply rules to existing transactions
+
+Use the offline command to preview existing **Uncategorized** transactions for a
+month. It reads saved email bodies and transaction types, without fetching Gmail
+or reparsing transactions. From the laptop's project root:
+
+```bash
+uv run --locked python -m finvault.backfill_categories --month 2026-10
+```
+
+Review the proposed category IDs, then add `--apply` to save matching assignments:
+
+```bash
+uv run --locked python -m finvault.backfill_categories --month 2026-10 --apply
+```
+
+Omit `--month` to include all months. Preview opens SQLite read-only; apply changes
+only the category of matching, still-uncategorised transactions. Existing category
+assignments are preserved, including any made while the command runs. Missing
+email bodies and unmatched transactions are reported and left unchanged. Output
+contains transaction IDs, dates, category IDs and counts, without email bodies or
+keywords. Apply recomputes suggestions using the rules saved at command startup.
+Refresh the dashboard afterward to see assigned categories.
+
+On the Pi, after deploying this version, run from its runtime directory so it
+uses the Pi's database and private settings:
+
+```bash
+cd "$HOME/.local/share/finvault"
+"$HOME/.local/share/finvault/current/.venv/bin/python" \
+  -m finvault.backfill_categories --month 2026-10
+```
+
+Add `--apply` to that command after reviewing the preview. `--database /path/to/file.db`
+and `--config /path/to/categories.toml` can override the defaults. No service or
+timer changes are needed; this command does not alter the ingestion timestamp.
 
 ## Tests and CI
 
@@ -174,10 +235,11 @@ flowchart TB
     end
 
     subgraph Pi["Raspberry Pi · systemd user services"]
-        Timer["finvault-deploy.timer<br/>5 min after the last check"] --> Deploy["finvault-deploy.service<br/>Deployment script"]
+        Timer["finvault-deploy.timer<br/>5 min after the last check"] --> Deploy["finvault-deploy.service<br/>bash current/scripts/deploy-pi.sh"]
         Deploy --> Clone["~/finvault<br/>Git clone"]
         Clone -->|Extract commit + uv sync --locked| Release["releases/SHA/<br/>Code + Python environment"]
         Release -->|Switch active release| Current["current symlink"]
+        Current -.->|Script for the next check| Deploy
         Current --> UI["finvault-ui.service<br/>Dashboard on port 8000"]
         Current --> Ingest["finvault-ingest.service"]
         Schedule["finvault-ingest.timer<br/>Every 15 minutes"] --> Ingest

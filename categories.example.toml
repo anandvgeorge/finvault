@@ -11,8 +11,9 @@ salary = "Salary"
 lend = "Lend"
 other = "Other"
 
-# Rules are saved and validated now; automatic assignment is a later step.
-# Any keyword will match, ignoring case; rules are evaluated in order.
+# Rules apply to newly parsed transactions during ingestion.
+# Match body text only, ignoring case and repeated whitespace.
+# Any keyword can match as a literal substring; the first matching rule wins.
 # Omit transaction_type to allow either debit or credit.
 # Use fictional examples here. Put personal keywords only in categories.toml.
 # [[rules]]

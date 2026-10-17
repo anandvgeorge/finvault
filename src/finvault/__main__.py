@@ -1,5 +1,7 @@
 import logging
 
+from finvault.categories import CategoryConfigError, TomlCategoryStore
+from finvault.category_matching import KeywordCategoryMatcher
 from finvault.database.database import Database
 from finvault.gmail.client import GmailClient
 from finvault.ingestion.email_ingestor import EmailIngestor
@@ -13,6 +15,12 @@ def main():
     logger = logging.getLogger(__name__)
     logger.info("Starting FinVault ingestion")
 
+    try:
+        matcher = KeywordCategoryMatcher(TomlCategoryStore().load())
+    except CategoryConfigError as error:
+        logger.error("%s", error)
+        raise SystemExit(1) from None
+
     gmail = GmailClient()
     database = Database()
 
@@ -24,7 +32,7 @@ def main():
         ingestor.ingest_label("Credit")
         ingestor.ingest_label("Debit card")
 
-        processor = TransactionProcessor(database)
+        processor = TransactionProcessor(database, matcher)
         processor.process()
         database.record_ingestion_completed()
     finally:
