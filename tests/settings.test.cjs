@@ -11,7 +11,7 @@ function settings() {
     const context = vm.createContext({ document: { addEventListener() {} }, fetch: async () => { throw new Error("Unexpected request"); } });
     vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings, statusTime, refreshSystemStatus })", context), context };
+    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings, statusTime, refreshSystemStatus, backfillCommands, copyCommandText })", context), context };
 }
 
 function fixture() {
@@ -24,6 +24,60 @@ function deferred() {
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
 }
+
+test("backfill commands distinguish preview from apply and support an optional month", () => {
+    const { backfillCommands } = settings();
+    const all = backfillCommands("laptop");
+    assert.equal(all.preview, "uv run --locked python -m finvault.backfill_categories");
+    assert.equal(all.apply, all.preview + " --apply");
+    const month = backfillCommands("laptop", "2001-02");
+    assert.equal(month.preview, all.preview + " --month 2001-02");
+    assert.equal(month.apply, month.preview + " --apply");
+});
+
+test("Pi commands quote paths and change to the runtime directory before running", () => {
+    const { backfillCommands } = settings();
+    const commands = backfillCommands("pi", "2001-02");
+    assert.equal(commands.preview, 'cd "$HOME/.local/share/finvault" &&\n"$HOME/.local/share/finvault/current/.venv/bin/python" -m finvault.backfill_categories --month 2001-02');
+    assert.equal(commands.apply, commands.preview + " --apply");
+    assert.doesNotMatch(backfillCommands("pi").preview, /--month/);
+});
+
+test("invalid months and unknown hosts cannot become copyable shell commands", () => {
+    const { backfillCommands } = settings();
+    for (const month of ["2001-2", "2001-00", "2001-13", "0000-01", "2001-02; echo example", "$(echo example)"]) {
+        assert.throws(() => backfillCommands("laptop", month), /YYYY-MM/);
+    }
+    assert.throws(() => backfillCommands("unknown"), /Choose/);
+});
+
+test("copy uses the clipboard API without changing focus or creating a field", async () => {
+    const { copyCommandText } = settings();
+    const values = [];
+    assert.equal(await copyCommandText("example command", {}, { writeText: async text => values.push(text) }), true);
+    assert.deepEqual(values, ["example command"]);
+});
+
+test("HTTP copy fallback cleans up and restores focus on success, failure and rejection", async () => {
+    const { copyCommandText } = settings();
+    for (const outcome of [true, false, "throw"]) {
+        let removed = false, restored = false, selected = false, appended = false;
+        const input = { style: {}, focus() {}, select() { selected = true; }, remove() { removed = true; } };
+        const document = {
+            activeElement: { focus() { restored = true; } },
+            createElement: tag => { assert.equal(tag, "textarea"); return input; },
+            body: { appendChild() { appended = true; } },
+            execCommand: command => {
+                assert.equal(command, "copy"); assert.equal(selected, true); assert.equal(input.value, "example command");
+                if (outcome === "throw") throw new Error("Synthetic clipboard failure");
+                return outcome;
+            },
+        };
+        const clipboard = outcome === true ? undefined : { writeText: async () => { throw new Error("Synthetic permission denial"); } };
+        assert.equal(await copyCommandText("example command", document, clipboard), outcome === true);
+        assert.equal(appended && removed && restored, true);
+    }
+});
 
 test("status timestamps always display IST, with explicit missing and invalid states", () => {
     const { statusTime } = settings();

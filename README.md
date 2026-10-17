@@ -54,134 +54,35 @@ IPv4 interfaces, including the LAN. Both commands use `data/finvault.db`.
 
 ## Categories
 
-Category IDs and labels come entirely from `categories.toml` in the server's
-working directory. Create your private file from the tracked example:
+Open **Settings** to add categories and keyword rules, then select **Save changes**.
+Rules look for keywords in email bodies, ignoring capitalisation. The first
+matching rule wins. New transactions are categorised automatically.
 
-```bash
-cp categories.example.toml categories.toml
-chmod 600 categories.toml
-```
+Your private settings are saved in `categories.toml`:
 
-On the laptop, keep this file in the project root. On the Pi, keep it at
-`~/.local/share/finvault/categories.toml`, alongside the runtime data and OAuth
-files, outside `current/` and `releases/`. After deploying this version, initialize
-it on the Pi if you have not already copied your private config there:
+- Laptop: project root.
+- Pi: `~/.local/share/finvault/categories.toml`.
 
-```bash
-cp "$HOME/.local/share/finvault/current/categories.example.toml" \
-  "$HOME/.local/share/finvault/categories.toml"
-chmod 600 "$HOME/.local/share/finvault/categories.toml"
-```
+The file stays out of Git. Laptop and Pi settings are separate.
 
-Only `categories.example.toml` belongs in Git; `categories.toml` is ignored.
-Set `FINVAULT_CATEGORIES_CONFIG` to override the file path if needed. A missing
-file provides an empty catalog; an invalid file produces an explicit error.
-
-Edit `[categories]` to add IDs and labels. Keep IDs stable when renaming labels
-so existing transaction assignments remain intact. Refresh the dashboard to load
-changes on desktop and mobile; no server restart is needed. Removed definitions
-remain visible as unavailable on transactions that already use them.
-
-Use **Settings** at the dashboard's top right (or open `/settings`) to edit
-categories and keyword rules. Add categories, rename labels, and move rules up or
-down to change priority. On desktop, category tiles stay visible beside the rules
-as you scroll; click or tap a name to rename it, then Enter to finish or Escape
-to cancel that rename. Enter one keyword per line and choose Either, Debit, or
-Credit for each rule. Save changes writes the server's private `categories.toml`;
-Discard reloads its saved settings. Editing fields alone does not write the file.
-Saving rewrites TOML formatting and removes comments. Laptop and Pi settings remain
-separate; opening the Pi's page from your laptop edits the Pi's file.
-
-Settings also shows the last completed ingestion, running Git commit (linked to
-GitHub), and last GitHub update check with its result. Timestamps display in IST;
-use Refresh to reload them. SQLite's `app_metadata` table holds one row per value,
-updated in place rather than keeping a run history. Ingestion records completion
-even with no new emails; exceptions leave the previous completion time intact.
-Parsing warnings do not prevent a run from completing.
-
-`scripts/deploy-pi.sh` records the check time immediately before fetching GitHub,
-then records Checking, No updates, Updated, or Failed. Failed fetches count as
-attempted checks; overlapping invocations that skip the deployment lock do not.
-Old runs show “Not recorded yet” until recorded by the updated code. A running
-release identifies its own commit, including after a rollback. Local checkouts
-capture Git HEAD at server startup; uncommitted edits are excluded from that ID.
-
-Configure `finvault-deploy.service` to run
-`/bin/bash %h/.local/share/finvault/current/scripts/deploy-pi.sh`. Each check then
-uses the active release's script, so script changes arrive with application
-updates. See the [migration and cleanup steps](deploy/README.md#switch-an-existing-service-to-the-active-release)
-if your service still uses `~/.local/bin/finvault-deploy`. Runtime timestamps stay
-in the existing ignored database.
-
-- `GET /categories`: category IDs and labels only, without private keyword rules.
-- `GET /settings/categories`: complete category and rule settings.
-- `GET /settings/status`: ingestion completion, running commit, update-check time and result.
-- `PUT /settings/categories`: validate and replace the complete settings, saved
-  atomically with file permissions `600`.
-
-The settings API uses `{"categories": [{"id": "custom", "label": "Custom"}],
-"rules": []}`. Keyword rules can be configured and saved. The standalone
-`KeywordCategoryMatcher` accepts validated settings, plain-text email body, and
-transaction type. It matches any configured keyword as a literal substring,
-ignoring case and repeated whitespace; the first eligible rule wins. Rules can
-restrict matching to debit or credit. No match returns `None` (Uncategorized).
-Subject, sender, and transaction merchant fields are not matching inputs.
-
-Ingestion loads saved rules once at the start of each run and assigns categories
-to newly parsed transactions before saving them. Save changes in Settings to use
-new rules on the next run; a running ingestion keeps its original rule snapshot.
-Missing configuration or no rules leaves new transactions Uncategorized. Invalid
-configuration stops ingestion before contacting Gmail and keeps the previous
-completion timestamp. Normal ingestion preserves existing transactions, including
-manual assignments and those left Uncategorized.
-
-To check this on your host, save a rule in Settings, then run ingestion normally.
-A newly parsed transaction with a matching body and transaction type should show
-the configured category on the dashboard; unmatched transactions stay
-Uncategorized. Running ingestion again skips transactions already saved.
-
-Test matching and ingestion integration with fictional data using:
-
-```bash
-uv run --locked python -m unittest tests.test_category_matching tests.test_processing tests.test_ingestion -v
-```
-
-### Apply rules to existing transactions
-
-Use the offline command to preview existing **Uncategorized** transactions for a
-month. It reads saved email bodies and transaction types, without fetching Gmail
-or reparsing transactions. From the laptop's project root:
+To apply saved rules to existing Uncategorized transactions, preview a month.
+On the laptop, run from the project root:
 
 ```bash
 uv run --locked python -m finvault.backfill_categories --month 2026-10
 ```
 
-Review the proposed category IDs, then add `--apply` to save matching assignments:
+On the Pi:
 
 ```bash
-uv run --locked python -m finvault.backfill_categories --month 2026-10 --apply
-```
-
-Omit `--month` to include all months. Preview opens SQLite read-only; apply changes
-only the category of matching, still-uncategorised transactions. Existing category
-assignments are preserved, including any made while the command runs. Missing
-email bodies and unmatched transactions are reported and left unchanged. Output
-contains transaction IDs, dates, category IDs and counts, without email bodies or
-keywords. Apply recomputes suggestions using the rules saved at command startup.
-Refresh the dashboard afterward to see assigned categories.
-
-On the Pi, after deploying this version, run from its runtime directory so it
-uses the Pi's database and private settings:
-
-```bash
-cd "$HOME/.local/share/finvault"
+cd "$HOME/.local/share/finvault" &&
 "$HOME/.local/share/finvault/current/.venv/bin/python" \
   -m finvault.backfill_categories --month 2026-10
 ```
 
-Add `--apply` to that command after reviewing the preview. `--database /path/to/file.db`
-and `--config /path/to/categories.toml` can override the defaults. No service or
-timer changes are needed; this command does not alter the ingestion timestamp.
+Add `--apply` after reviewing; omit `--month` for all months. Existing category
+assignments are kept. Settings has copyable preview and apply commands for both
+the laptop and Pi next to the rules.
 
 ## Tests and CI
 
