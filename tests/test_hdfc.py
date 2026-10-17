@@ -128,6 +128,82 @@ class HDFCParserTests(unittest.TestCase):
                 self.assertEqual(transaction.transaction_type, "credit")
                 self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
 
+    def test_deposit_alert_uses_credited_amount_and_complete_neft_sender(self):
+        reference = "NEFT Cr-TEST0000000-Example Sender-Example Recipient-FIXTURE000000"
+        body = (
+            "HDFC BANK Dear Customer, You have received a credit in your account. "
+            "The amount credited/received is INR 1,042.50 in your account XX0000 "
+            f"on 13-OCT-2001 on account of {reference} "
+            "Your A/c is at HDFC Bank Example Branch. "
+            "Your Available balance is INR 99,999.00."
+        )
+        for separator in (" ", "\n", "\t", "\u00a0"):
+            with self.subTest(separator=repr(separator)):
+                transaction = self.parse(body.replace(" ", separator))
+                self.assertEqual(transaction.amount, Decimal("1042.50"))
+                self.assertEqual(transaction.merchant, "Example Sender")
+                self.assertEqual(transaction.reference, reference)
+                self.assertEqual(transaction.account, "HDFC XX0000")
+                self.assertEqual(transaction.transaction_type, "credit")
+                self.assertEqual(transaction.source, "Credit")
+                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+
+    def test_deposit_alert_keeps_other_narrations_without_guessing_sender(self):
+        for reference in (
+            "UPI/000000000000/Example Sender/payer@example.invalid",
+            "TEST0000-000000000-Example Sender",
+            "NEFT Cr-Unknown reference format",
+        ):
+            with self.subTest(reference=reference):
+                transaction = self.parse(
+                    "The amount credited/received is INR 42.50 in your account **0000 "
+                    f"on 13-Oct-2001 on account of {reference} "
+                    "Your A/c is at HDFC Bank Example Branch. "
+                    "Your Available balance is INR 9,999.00."
+                )
+                self.assertEqual(transaction.merchant, reference)
+                self.assertEqual(transaction.reference, reference)
+                self.assertEqual(transaction.amount, Decimal("42.50"))
+
+    def test_deposit_alert_requires_transaction_details_not_just_a_subject_or_balance(self):
+        bodies = (
+            "Your Available balance is INR 9,999.00.",
+            "The amount will be credited/received is INR 42.50 in your account XX0000 "
+            "on 13-OCT-2001 on account of Example Sender Your A/c is at Example Branch.",
+            "The amount credited/received is INR 42.50 in your account XX0000 "
+            "on account of Example Sender Your A/c is at Example Branch.",
+            "The amount credited/received is INR 42.50 in your account "
+            "on 13-OCT-2001 on account of Example Sender Your A/c is at Example Branch.",
+            "The amount credited/received is INR 42.50 in your account XX0000 "
+            "on 13-OCT-2001 on account of Your A/c is at Example Branch.",
+            "The amount credited/received is INR 42.50 in your account XX0000 "
+            "on 13-OCT-2001 on account of Incomplete narration",
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                email = self.email(body)
+                email.subject = "New Deposit Alert: Check your A/c balance now!"
+                self.assertIsNone(self.parser.parse(email, "Credit"))
+
+    def test_pending_deposit_alert_is_processed_once_and_not_duplicated_on_rerun(self):
+        database = Database(":memory:")
+        self.addCleanup(database.close)
+        email = self.email(
+            "The amount credited/received is INR 42.50 in your account XX0000 "
+            "on 13-OCT-2001 on account of "
+            "NEFT Cr-TEST0000000-Example Sender-Example Recipient-FIXTURE000000 "
+            "Your A/c is at HDFC Bank Example Branch. Your Available balance is INR 9,999.00.",
+            gmail_id="fixture-deposit-alert",
+        )
+        database.save_email(email, "Credit")
+        self.assertEqual(len(database.get_emails(unprocessed_only=True)), 1)
+        processor = TransactionProcessor(database)
+        processor.process()
+        self.assertEqual(database.get_emails(unprocessed_only=True), [])
+        processor.process()
+        rows = database.connection.execute("SELECT amount, merchant FROM transactions").fetchall()
+        self.assertEqual(rows, [("42.50", "Example Sender")])
+
     def test_account_debit_variants(self):
         for verb, credit_verb, suffix in (("deducted", "added", " account"), ("debited", "credited", "")):
             with self.subTest(verb=verb):

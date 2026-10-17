@@ -71,14 +71,34 @@ Python version in `.python-version` and the dependencies in `uv.lock`. Tests use
 synthetic data and mocked Gmail access; no Google credentials or repository
 secrets are required.
 
+## Development workflow
+
+Develop, test, and commit code changes on `dev`, then push:
+
+```bash
+git switch dev
+git push origin dev
+```
+
+When ready to release, open a pull request on GitHub with **base: `main`** and
+**compare: `dev`**. Review the test results, then merge the PR.
+
+Pushes to `dev` and pull requests run tests without deploying. After a merge,
+CI tests `main` again and promotes its passing commit to `production`. The Pi
+deploys it on the next update check. CI maintains the `production` branch.
+
 ## Deployment architecture
 
 ```mermaid
 flowchart TB
-    Laptop["Laptop<br/>Develop and test"] -->|git push| Main
+    Laptop["Laptop<br/>Develop and test"] -->|git push| Dev
 
     subgraph GitHub["GitHub"]
-        Main["main"] --> CI["Run unit tests"]
+        Dev["dev"] --> DevCI["Run tests on dev"]
+        Dev --> PR["Pull request<br/>dev → main"]
+        PR --> PRCI["Run tests on the PR"]
+        PRCI -->|Review and merge| Main["main"]
+        Main --> CI["Run tests on main"]
         CI -->|Tests pass on current main| Production["production<br/>Exact tested commit"]
     end
 

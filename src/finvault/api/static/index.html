@@ -79,8 +79,8 @@
         .period-toolbar .period-button { white-space: nowrap; }
         .period-toolbar .period-help { flex: 1 1 300px; margin-left: 8px; }
         #all-periods { min-width: 74px; }
-        .period-help, .selection-label { margin: 0; color: var(--muted); font-size: 12px; }
-        .period-years { display: grid; gap: 4px; }
+        .period-help, .selection-label { margin: 0; color: var(--muted); font: 12px/1.7 var(--mono); }
+        .period-years { display: grid; grid-auto-rows: 40px; gap: 4px; }
         .period-button {
             min-height: 40px;
             padding: 8px 12px;
@@ -93,12 +93,16 @@
         .period-button:hover { border-color: #777b4f; background: #2b2e20; color: var(--ink); }
         .period-button[aria-pressed="true"] { background: var(--yellow); border-color: var(--yellow); color: var(--yellow-ink); font-weight: 700; box-shadow: 2px 2px 0 #080b07; }
         .year-button { font-weight: 600; width: 100%; }
-        .month-buttons { position: relative; display: flex; gap: 5px; overflow-x: auto; padding: 4px 3px; scrollbar-width: thin; scrollbar-color: #62683e transparent; }
+        .month-buttons { position: relative; display: flex; align-items: center; gap: 5px; height: 100%; overflow-x: auto; overflow-y: hidden; padding: 0 3px; scrollbar-width: none; }
+        .month-buttons::-webkit-scrollbar { display: none; }
         .month-buttons[hidden] { display: none; }
         .month-buttons .period-button { flex: 1 0 44px; padding: 8px 6px; }
-        .selection-label { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); font-family: var(--mono); line-height: 1.7; overflow-wrap: anywhere; }
+        .month-buttons .period-button:focus-visible { outline-offset: -3px; }
+        .period-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
+        .selection-label, .data-status { height: 3.4em; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        .selection-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
         .selection-label strong { color: var(--yellow); font-weight: 500; }
-        .data-status { min-height: 20px; color: var(--muted); font-size: 13px; }
+        .data-status { flex: 0 1 auto; max-width: 50%; margin: 0; color: var(--muted); font: 12px/1.7 var(--mono); text-align: right; }
         .data-status:empty { display: none; }
         .data-status.error { color: var(--debit); }
         .retry-button { margin-bottom: 16px; }
@@ -217,11 +221,11 @@
             .period-toolbar { padding-bottom: 12px; margin-bottom: 10px; }
             .period-toolbar .period-help { flex-basis: 100%; margin: 4px 0 0; font-size: 11px; }
             .period-row { grid-template-columns: 58px minmax(0, 1fr); gap: 8px; }
-            .period-years { gap: 3px; }
+            .period-years { grid-auto-rows: 44px; gap: 3px; }
             #all-periods { min-width: 58px; }
             .period-button { min-height: 44px; padding: 10px 12px; }
             .month-buttons .period-button { flex: 0 0 44px; padding: 10px 6px; }
-            .selection-label { font-size: 11px; }
+            .selection-label, .data-status { font-size: 11px; }
             .cards { gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .card { padding: 16px 13px; }
             .card h3 { min-height: auto; font-size: 9px; }
@@ -296,9 +300,11 @@
             <p class="period-help">Select years, then months. A year with no months selected includes the full year.</p>
         </div>
         <div id="period-years" class="period-years"></div>
-        <p class="selection-label">Showing: <strong id="selection-label">Loading calendar…</strong></p>
+        <div class="period-footer">
+            <p class="selection-label">Showing: <strong id="selection-label">Loading calendar…</strong></p>
+            <p id="data-status" class="data-status" role="status" aria-live="polite">Loading dashboard…</p>
+        </div>
     </section>
-    <p id="data-status" class="data-status" role="status" aria-live="polite">Loading dashboard…</p>
     <button type="button" id="retry" class="period-button retry-button" hidden>Try again</button>
     <div id="overview-cards" class="cards" aria-busy="true">
         <div class="card debit-card"><h3>Debits</h3><p id="total-debits">—</p></div>
