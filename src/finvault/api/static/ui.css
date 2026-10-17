@@ -1,8 +1,15 @@
 /* Shared header and themed dropdowns for the dashboard and Settings. */
+:root { --header-clearance: 100px; }
 .page-header {
+    position: sticky; top: 0; z-index: 20; background: var(--canvas);
     display: flex; align-items: center; justify-content: space-between; gap: 20px;
-    padding-bottom: 22px; margin-bottom: 28px; border-bottom: 1px solid var(--border);
+    padding-top: 16px; padding-bottom: 22px; margin-bottom: 28px; border-bottom: 1px solid var(--border);
     font: 13px/1.5 var(--mono);
+}
+.page-header::before {
+    /* Cover card shadows that extend beyond the content column. */
+    content: ""; position: absolute; inset: 0 -8px; z-index: -1;
+    background: var(--canvas); pointer-events: none;
 }
 .brand { display: flex; align-items: center; gap: 14px; color: inherit; text-decoration: none; }
 .brand-mark {
@@ -33,7 +40,8 @@
 .category-option[aria-selected="true"]::after { content: "✓"; position: absolute; right: 9px; }
 .category-option[data-active="true"] { background: var(--yellow); color: var(--yellow-ink); }
 @media (max-width: 700px) {
-    .page-header { padding-bottom: 18px; margin-bottom: 20px; gap: 12px; }
+    :root { --header-clearance: 86px; }
+    .page-header { padding-top: 12px; padding-bottom: 18px; margin-bottom: 20px; gap: 12px; }
     .brand { gap: 10px; }
     .brand-mark { flex-basis: 34px; width: 34px; height: 36px; font-size: 22px; }
     .brand-name { font-size: 22px; }
