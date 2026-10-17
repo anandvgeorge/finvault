@@ -125,7 +125,10 @@
         .visibility-toggle svg { width: 20px; height: 20px; }
         .visibility-toggle .eye-slash { display: none; }
         .visibility-toggle[data-hidden="true"] .eye-slash { display: block; }
-        .transaction-count { margin: 10px 0 14px; color: var(--muted); font: 11px var(--mono); }
+        .transaction-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 17px; margin: 10px 0 14px; }
+        .transaction-count { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 11px/1.5 var(--mono); }
+        .category-status { margin: 0; flex: 0 0 auto; color: var(--muted); font: 11px/1.5 var(--mono); white-space: nowrap; }
+        .category-status.error { color: var(--debit); }
         .transaction-filters { display: flex; align-items: center; gap: 12px; overflow-x: auto; padding: 4px 3px 6px; margin: 10px 0; scrollbar-width: thin; scrollbar-color: #62683e transparent; }
         .transaction-types, .debit-filters { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
         .transaction-filters .period-button { white-space: nowrap; }
@@ -181,6 +184,8 @@
         }
         select:hover, select:focus, .category-trigger:hover, .category-trigger[aria-expanded="true"] { border-color: var(--yellow); }
         .category-trigger { min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .category-trigger[aria-disabled="true"] { cursor: wait; opacity: .65; }
+        .category-trigger[data-save-state="error"] { border-color: var(--debit); }
         .category-menu {
             position: fixed;
             z-index: 100;
@@ -340,7 +345,10 @@
             <button type="button" class="sort-button" data-sort-field="date" aria-controls="transactions-table">Date <span class="sort-indicator" aria-hidden="true">↓</span></button>
             <button type="button" class="sort-button" data-sort-field="amount" aria-controls="transactions-table">Amount <span class="sort-indicator" aria-hidden="true">↕</span></button>
         </div>
-        <p id="transaction-count" class="transaction-count" aria-live="polite"></p>
+        <div class="transaction-summary">
+            <p id="transaction-count" class="transaction-count" aria-live="polite"></p>
+            <p id="category-status" class="category-status" role="status" aria-live="polite"></p>
+        </div>
         <div class="table-scroll">
             <table aria-busy="true" id="transactions-table">
                 <thead>
@@ -360,6 +368,8 @@
 
         const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const CATEGORY_OPTIONS = [["", "Uncategorized"], ["necessary", "Necessary"], ["lifestyle", "Lifestyle"],
+            ["eat_out", "Eat out"], ["investment", "Investment"], ["salary", "Salary"], ["lend", "Lend"], ["other", "Other"]];
 
         class PeriodSelection {
             constructor(years, now = new Date()) {
@@ -425,7 +435,8 @@
             if (match) {
                 const time = cell.ownerDocument.createElement("span");
                 time.className = "transaction-time";
-                const zone = match[2] === "Z" ? " UTC" : match[2] ? ` ${match[2]}` : "";
+                const zone = match[2] === "+05:30" ? " IST"
+                    : match[2] === "Z" ? " UTC" : match[2] ? ` ${match[2]}` : "";
                 time.textContent = `${match[1]}${zone}`;
                 display.appendChild(time);
             }
@@ -508,7 +519,11 @@
                 button.setAttribute("aria-haspopup", "listbox");
                 button.setAttribute("aria-controls", this.menu.id);
                 button.setAttribute("aria-expanded", "false");
-                button.onclick = () => this.button === button ? this.close() : this.open(select, button);
+                button.onclick = () => {
+                    if (button.getAttribute("aria-disabled") !== "true") {
+                        this.button === button ? this.close() : this.open(select, button);
+                    }
+                };
                 button.onkeydown = event => this.keydown(event, select, button);
                 button.onblur = () => { if (this.button === button) this.close(true); };
                 select.hidden = true;
@@ -517,6 +532,7 @@
             }
 
             open(select, button) {
+                if (button.getAttribute("aria-disabled") === "true") return;
                 this.close();
                 this.select = select;
                 this.button = button;
@@ -563,19 +579,26 @@
 
             close(commit = false) {
                 if (!this.button) return;
+                const select = this.select;
+                const changed = commit && select.selectedIndex !== this.activeIndex;
                 if (commit) {
-                    this.select.selectedIndex = this.activeIndex;
-                    this.button.textContent = this.select.options[this.activeIndex].textContent;
-                    this.select.dispatchEvent(new this.view.Event("change", { bubbles: true }));
+                    select.selectedIndex = this.activeIndex;
+                    this.button.textContent = select.options[this.activeIndex].textContent;
                 }
                 this.button.setAttribute("aria-expanded", "false");
                 this.button.removeAttribute("aria-activedescendant");
                 this.menu.hidden = true;
                 this.menu.replaceChildren();
                 this.button = this.select = null;
+                // A change handler can disable the button or rerender the row.
+                if (changed) select.dispatchEvent(new this.view.Event("change", { bubbles: true }));
             }
 
             keydown(event, select, button) {
+                if (button.getAttribute("aria-disabled") === "true") {
+                    if (event.key !== "Tab") event.preventDefault();
+                    return;
+                }
                 const open = this.button === button;
                 const key = event.key;
                 if (key === "Escape") {
@@ -605,6 +628,49 @@
                         if (this.items[index].textContent.toLowerCase().startsWith(query)) { this.highlight(index); break; }
                     }
                 }
+            }
+        }
+
+        async function saveCategory(transactionId, category) {
+            const response = await fetch(`/transactions/${transactionId}/category`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ category }),
+            });
+            if (!response.ok) throw new Error(`Category update failed: ${response.status}`);
+            const saved = await response.json();
+            if (saved.id !== transactionId || saved.category !== category) throw new Error("Unexpected category response");
+            return saved;
+        }
+
+        class CategoryEditor {
+            constructor(saver, onChange) {
+                this.saver = saver;
+                this.onChange = onChange;
+                this.states = new Map();
+            }
+
+            stateFor(transaction) {
+                return this.states.get(transaction.id) || { category: transaction.category ?? null, status: "idle" };
+            }
+
+            async save(transaction, category) {
+                const current = this.stateFor(transaction);
+                if (current.status === "saving" || current.category === category) return;
+                const previous = current.category;
+                const state = { category, status: "saving" };
+                this.states.set(transaction.id, state);
+                this.onChange(transaction.id, state);
+                try {
+                    await this.saver(transaction.id, category);
+                    state.status = "saved";
+                } catch (error) {
+                    state.category = previous;
+                    state.status = "error";
+                }
+                // Retain the edit across filters and GET responses that started before the save.
+                transaction.category = state.category;
+                this.onChange(transaction.id, state);
             }
         }
 
@@ -706,6 +772,7 @@
             const table = document.getElementById("transactions-table");
             const tbody = document.getElementById("transactions-body");
             const count = document.getElementById("transaction-count");
+            const categoryStatus = document.getElementById("category-status");
             const totalsVisibility = new AmountVisibility(document.getElementById("toggle-totals"), "totals");
             const transactionVisibility = new AmountVisibility(document.getElementById("toggle-transaction-amounts"), "transaction amounts");
             const debitFilters = document.getElementById("debit-filters");
@@ -722,6 +789,16 @@
             const transactionSort = new TransactionSort();
             const sortButtons = document.querySelectorAll("[data-sort-field]");
             const categoryMenu = new CategoryMenu(document);
+            const categoryControls = new Map();
+            const categoryEditor = new CategoryEditor(saveCategory, (id, state) => {
+                const controls = categoryControls.get(id);
+                if (controls) updateCategoryControl(controls);
+                const pending = [...categoryEditor.states.values()].some(value => value.status === "saving");
+                const failed = !pending && state.status === "error";
+                categoryStatus.textContent = pending ? "Saving…" : failed ? "Save failed" : "Saved";
+                categoryStatus.className = failed ? "category-status error" : "category-status";
+                categoryStatus.title = failed ? "Couldn’t save the category. Previous selection restored; try again." : "";
+            });
             let loadedTransactions = null;
             const cardFields = ["total-debits", "total-credits", "net-cashflow", "upi-debits", "credit-card-debits"];
             const yearRows = new Map();
@@ -729,6 +806,7 @@
 
             function tableMessage(message) {
                 categoryMenu.close();
+                categoryControls.clear();
                 transactionVisibility.clear();
                 const row = document.createElement("tr");
                 row.className = "message-row";
@@ -742,6 +820,7 @@
 
             function renderTransactions(allTransactions) {
                 categoryMenu.close();
+                categoryControls.clear();
                 const transactions = transactionSort.apply(transactionFilters.apply(allTransactions));
                 transactionVisibility.clear();
                 tbody.replaceChildren();
@@ -778,10 +857,10 @@
                     cell.className = "transaction-category";
                     const category = document.createElement("select");
                     category.setAttribute("aria-label", `Category for ${transaction.merchant} on ${transaction.transaction_date.slice(0, 10)}`);
-                    const options = [["", "Uncategorized"], ["necessary", "Necessary"], ["lifestyle", "Lifestyle"],
-                        ["investment", "Investment"], ["salary", "Salary"], ["other", "Other"]];
-                    if (transaction.category && !options.some(([value]) => value === transaction.category)) {
-                        options.push([transaction.category, transaction.category]);
+                    const selected = categoryEditor.stateFor(transaction).category;
+                    const options = CATEGORY_OPTIONS.slice();
+                    if (selected && !options.some(([value]) => value === selected)) {
+                        options.push([selected, selected]);
                     }
                     for (const [value, label] of options) {
                         const option = document.createElement("option");
@@ -789,13 +868,37 @@
                         option.textContent = label;
                         category.appendChild(option);
                     }
-                    category.value = transaction.category || "";
+                    category.value = selected || "";
                     cell.appendChild(category);
-                    categoryMenu.enhance(category);
+                    const button = categoryMenu.enhance(category);
+                    const controls = { transaction, select: category, button };
+                    categoryControls.set(transaction.id, controls);
+                    updateCategoryControl(controls);
+                    category.onchange = () => { void categoryEditor.save(transaction, category.value || null); };
                     row.appendChild(cell);
                     fragment.appendChild(row);
                 }
                 tbody.appendChild(fragment);
+            }
+
+            function updateCategoryControl({ transaction, select, button }) {
+                const state = categoryEditor.stateFor(transaction);
+                const value = state.category || "";
+                if (!Array.from(select.options).some(option => option.value === value)) {
+                    const option = document.createElement("option");
+                    option.value = value;
+                    option.textContent = value;
+                    select.appendChild(option);
+                }
+                select.value = value;
+                const pending = state.status === "saving";
+                select.disabled = pending;
+                button.setAttribute("aria-disabled", String(pending));
+                button.setAttribute("aria-busy", String(pending));
+                button.dataset.saveState = state.status;
+                button.textContent = pending ? "Saving…" : select.options[select.selectedIndex].textContent;
+                button.title = state.status === "error" ? "Couldn’t save the category. Previous selection restored; try again."
+                    : state.status === "saved" ? "Category saved" : "";
             }
 
             function refreshTransactionFilters() {

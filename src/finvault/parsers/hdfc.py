@@ -1,38 +1,69 @@
 import re
 from datetime import datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from finvault.models.email import Email
 from finvault.models.transaction import Transaction
+
+IST = ZoneInfo("Asia/Kolkata")
+TIME_ZONE = r"(?:\s*(?i:IST|UTC|GMT|Z|[+-]\d{2}:?\d{2})(?![\w:+-]))?"
 
 
 class HDFCParser:
 
     def parse(self, email: Email, source: str) -> Transaction | None:
         if source == "UPI":
-            return self._parse_upi(email)
+            transaction = self._parse_upi(email)
 
-        if source == "Credit card":
-            return self._parse_credit_card(email)
+        elif source == "Credit card":
+            transaction = self._parse_credit_card(email)
 
-        if source == "Debit card":
-            return self._parse_debit_card(email)
+        elif source == "Debit card":
+            transaction = self._parse_debit_card(email)
 
-        if source == "Credit":
+        elif source == "Credit":
             # Gmail labels can overlap; confirmed spending also appears here.
-            return (
+            transaction = (
                 self._parse_credit(email)
                 or self._parse_debit_card(email)
                 or self._parse_bank_debit(email)
             )
+        else:
+            return None
 
-        return None
+        if transaction is not None:
+            transaction.transaction_date = self._as_ist(transaction.transaction_date)
+        return transaction
+
+    @staticmethod
+    def _as_ist(timestamp: datetime) -> datetime:
+        # HDFC body timestamps (and headers) without a timezone are
+        # interpreted as Indian local time, independent of the host timezone.
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=IST)
+        return timestamp.astimezone(IST)
+
+    def _body_datetime(self, value: str, date_format: str, email: Email) -> datetime:
+        """Use the body date, borrowing the header's IST clock only if needed."""
+        if "%H" not in date_format:
+            date = datetime.strptime(value, date_format).date()
+            return datetime.combine(date, self._as_ist(email.received_at).timetz())
+
+        zone = re.search(r"\s*(IST|UTC|GMT|Z|[+-]\d{2}:?\d{2})$", value, re.IGNORECASE)
+        if zone is None:
+            return datetime.strptime(value, date_format).replace(tzinfo=IST)
+
+        name = zone.group(1).upper()
+        offset = {"IST": "+0530", "UTC": "+0000", "GMT": "+0000", "Z": "+0000"}.get(name, name)
+        timestamp = datetime.strptime(value[:zone.start()] + " " + offset, date_format + " %z")
+        return timestamp.astimezone(IST)
 
     def _parse_debit_card(self, email: Email) -> Transaction | None:
         body = " ".join(email.body_text.split())
         amount_pattern = r"(?P<amount>\d[\d,]*(?:\.\d+)?)"
         card_pattern = r"(?P<card>\d{4})"
-        date_pattern = r"(?P<date>\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})"
+        date_pattern = r"(?P<date>\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2}" + TIME_ZONE + r")"
 
         reversal = re.search(
             r"We note that a transaction for Rs\.?\s*" + amount_pattern
@@ -67,7 +98,7 @@ class HDFCParser:
         )
         if match:
             transaction_date = (
-                datetime.strptime(match.group("date"), "%d-%m-%Y %H:%M:%S")
+                self._body_datetime(match.group("date"), "%d-%m-%Y %H:%M:%S", email)
                 if match.group("date") else email.received_at
             )
             merchant = match.group("merchant").strip()
@@ -80,12 +111,12 @@ class HDFCParser:
                 + r"\s+(?:is|has been) debited from your HDFC Bank Debit Card ending\s+"
                 + card_pattern
                 + r"\s+at\s+(?P<merchant>.+?)\s+on\s+"
-                + r"(?P<date>\d{2} \w{3}, \d{4} at \d{2}:\d{2}:\d{2})",
+                + r"(?P<date>\d{2} \w{3}, \d{4} at \d{2}:\d{2}:\d{2}" + TIME_ZONE + r")",
                 body,
             )
             if match:
-                transaction_date = datetime.strptime(
-                    match.group("date"), "%d %b, %Y at %H:%M:%S"
+                transaction_date = self._body_datetime(
+                    match.group("date"), "%d %b, %Y at %H:%M:%S", email
                 )
                 merchant = match.group("merchant").strip()
             else:
@@ -102,7 +133,7 @@ class HDFCParser:
                 )
                 if not match:
                     return None
-                transaction_date = datetime.strptime(match.group("date"), "%d/%m/%Y")
+                transaction_date = self._body_datetime(match.group("date"), "%d/%m/%Y", email)
                 merchant = match.group("merchant").strip()
 
         return Transaction(
@@ -169,7 +200,7 @@ class HDFCParser:
                 transaction_type="debit",
                 merchant=default_merchant or match.group("merchant").strip(),
                 transaction_date=(
-                    datetime.strptime(match.group("date"), date_format)
+                    self._body_datetime(match.group("date"), date_format, email)
                     if date_format else email.received_at
                 ),
                 account=f"HDFC {match.group('account')}",
@@ -230,14 +261,10 @@ class HDFCParser:
         vpa = transaction_match.group(1)
         merchant = transaction_match.group(2)
 
-        date = datetime.strptime(
+        transaction_date = self._body_datetime(
             transaction_match.group(3),
             "%d-%m-%y",
-        ).date()
-
-        transaction_date = datetime.combine(
-            date,
-            email.received_at.time(),
+            email,
         )
 
         reference = reference_match.group(1) if reference_match else None
@@ -267,7 +294,7 @@ class HDFCParser:
             r"towards\s+"
             r"(.+?)\s+"
             r"on\s+"
-            r"(\d{2} \w{3}, \d{4} at \d{2}:\d{2}:\d{2})",
+            r"(\d{2} \w{3}, \d{4} at \d{2}:\d{2}:\d{2}" + TIME_ZONE + r")",
             body,
             re.DOTALL,
         )
@@ -276,9 +303,10 @@ class HDFCParser:
             amount = Decimal(transaction_match.group(1))
             card = transaction_match.group(2)
             merchant = transaction_match.group(3).strip()
-            transaction_date = datetime.strptime(
+            transaction_date = self._body_datetime(
                 transaction_match.group(4),
                 "%d %b, %Y at %H:%M:%S",
+                email,
             )
 
             return Transaction(
@@ -304,7 +332,7 @@ class HDFCParser:
             r"at\s+"
             r"(.+?)\s+"
             r"on\s+"
-            r"(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})",
+            r"(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2}" + TIME_ZONE + r")",
             body,
             re.DOTALL,
         )
@@ -313,9 +341,10 @@ class HDFCParser:
             card = transaction_match.group(1)
             amount = Decimal(transaction_match.group(2))
             merchant = transaction_match.group(3).strip()
-            transaction_date = datetime.strptime(
+            transaction_date = self._body_datetime(
                 transaction_match.group(4),
                 "%d-%m-%Y %H:%M:%S",
+                email,
             )
 
             return Transaction(
@@ -367,9 +396,10 @@ class HDFCParser:
                 currency="INR",
                 transaction_type="credit",
                 merchant=" ".join(match.group("sender").split()),
-                transaction_date=datetime.strptime(
+                transaction_date=self._body_datetime(
                     match.group("date"),
                     "%d-%m-%y",
+                    email,
                 ),
                 account=f"HDFC {match.group('account')}",
                 source="Credit",
@@ -394,9 +424,10 @@ class HDFCParser:
                 currency="INR",
                 transaction_type="credit",
                 merchant=self._neft_sender(reference) or "NEFT",
-                transaction_date=datetime.strptime(
+                transaction_date=self._body_datetime(
                     match.group("date"),
                     "%d-%b-%Y",
+                    email,
                 ),
                 account=f"HDFC {match.group('account')}",
                 source="Credit",
@@ -424,9 +455,10 @@ class HDFCParser:
                 currency="INR",
                 transaction_type="credit",
                 merchant=(match.group("sender") or match.group("vpa")).strip(),
-                transaction_date=datetime.strptime(
+                transaction_date=self._body_datetime(
                     match.group("date"),
                     "%d-%m-%y",
+                    email,
                 ),
                 account=f"HDFC {match.group('account')}",
                 source="Credit",
@@ -450,7 +482,7 @@ class HDFCParser:
                 currency="INR",
                 transaction_type="credit",
                 merchant=self._neft_sender(reference) or reference,
-                transaction_date=datetime.strptime(match.group("date"), "%d-%b-%Y"),
+                transaction_date=self._body_datetime(match.group("date"), "%d-%b-%Y", email),
                 account=f"HDFC {match.group('account')}",
                 source="Credit",
                 reference=reference,
@@ -471,7 +503,7 @@ class HDFCParser:
                 currency="INR",
                 transaction_type="credit",
                 merchant=match.group("merchant").strip(),
-                transaction_date=datetime.strptime(match.group("date"), "%d-%b-%Y"),
+                transaction_date=self._body_datetime(match.group("date"), "%d-%b-%Y", email),
                 account=f"HDFC {match.group('account')}",
                 source="Credit",
                 reference=None,

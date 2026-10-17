@@ -49,7 +49,7 @@ class ApiTests(unittest.TestCase):
             self.save_transaction(message_id, transaction_date=datetime.fromisoformat(date),
                                   amount=Decimal(amount), transaction_type=kind, source=source)
 
-    def request(self, path, parameters=()):
+    def request(self, path, parameters=(), *, method="GET", body=None):
         """Exercise ASGI query validation and responses without HTTP dependencies.
 
         Execute sync handlers inline; worker-thread scheduling is outside these
@@ -60,17 +60,22 @@ class ApiTests(unittest.TestCase):
 
         async def run():
             messages = []
+            if isinstance(body, bytes):
+                payload = body
+            else:
+                payload = json.dumps(body).encode() if body is not None else b""
 
             async def receive():
-                return {"type": "http.request", "body": b"", "more_body": False}
+                return {"type": "http.request", "body": payload, "more_body": False}
 
             async def send(message):
                 messages.append(message)
 
             scope = {
                 "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
-                "method": "GET", "scheme": "http", "path": path,
-                "raw_path": path.encode(), "root_path": "", "headers": [],
+                "method": method, "scheme": "http", "path": path,
+                "raw_path": path.encode(), "root_path": "",
+                "headers": [(b"content-type", b"application/json")] if body is not None else [],
                 "query_string": urlencode(parameters).encode(),
                 "server": ("testserver", 80), "client": ("127.0.0.1", 1234),
             }
@@ -78,9 +83,9 @@ class ApiTests(unittest.TestCase):
                 await asyncio.wait_for(self.api.app(scope, receive, send), timeout=3)
             status = next(message["status"] for message in messages
                           if message["type"] == "http.response.start")
-            body = b"".join(message.get("body", b"") for message in messages
-                            if message["type"] == "http.response.body")
-            return status, json.loads(body)
+            response_body = b"".join(message.get("body", b"") for message in messages
+                                     if message["type"] == "http.response.body")
+            return status, json.loads(response_body)
 
         return asyncio.run(run())
 
@@ -140,6 +145,61 @@ class ApiTests(unittest.TestCase):
         self.database.save_email(email("fixture-email-only"), "Credit")
         self.assertEqual(self.api.get_years(), [2003, 2002, 2001, 2000])
         self.assertEqual(self.request("/years"), (200, [2003, 2002, 2001, 2000]))
+
+    def test_category_update_accepts_each_category_and_changes_only_the_target_category(self):
+        self.save_transaction("fixture-one")
+        self.save_transaction("fixture-two", transaction_date=datetime(2001, 1, 1))
+        original_rows = self.api.get_transactions()
+        original_totals = self.api.get_overview()
+        for category in ("necessary", "lifestyle", "eat_out", "investment", "salary", "lend", "other", "other"):
+            with self.subTest(category=category):
+                self.assertEqual(self.request(
+                    "/transactions/1/category", method="PATCH", body={"category": category},
+                ), (200, {"id": 1, "category": category}))
+                expected = [{**row, "category": category if row["id"] == 1 else row["category"]}
+                            for row in original_rows]
+                self.assertEqual(self.request("/transactions"), (200, expected))
+                self.assertEqual(self.api.get_overview(), original_totals)
+
+    def test_category_update_can_clear_a_category_with_null(self):
+        self.save_transaction("fixture-one")
+        self.request("/transactions/1/category", method="PATCH", body={"category": "investment"})
+        self.assertEqual(self.request(
+            "/transactions/1/category", method="PATCH", body={"category": None},
+        ), (200, {"id": 1, "category": None}))
+        self.assertIsNone(self.api.get_transactions()[0]["category"])
+
+    def test_category_update_returns_404_for_a_missing_transaction(self):
+        self.save_transaction("fixture-one")
+        self.assertEqual(self.request(
+            "/transactions/999/category", method="PATCH", body={"category": "salary"},
+        ), (404, {"detail": "Transaction not found"}))
+        self.assertEqual(len(self.api.get_transactions()), 1)
+        self.assertIsNone(self.api.get_transactions()[0]["category"])
+
+    def test_category_update_rejects_invalid_ids_and_bodies_without_changing_data(self):
+        self.save_transaction("fixture-one")
+        self.database.update_transaction_category(1, "necessary")
+        original_rows = self.api.get_transactions()
+        for value in ("", "Salary", "salary ", "unknown", 1, True, [], {}, "salary'; DROP TABLE transactions; --"):
+            with self.subTest(value=value):
+                status, body = self.request(
+                    "/transactions/1/category", method="PATCH", body={"category": value},
+                )
+                self.assertEqual(status, 422)
+                self.assertIn("detail", body)
+        for payload in ({}, {"category": "salary", "amount": "999"}, [], "salary", b"null", b'{"category":'):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.request(
+                    "/transactions/1/category", method="PATCH", body=payload,
+                )[0], 422)
+        self.assertEqual(self.request("/transactions/1/category", method="PATCH")[0], 422)
+        for transaction_id in ("0", "-1", "not-an-id", "1 OR 1=1"):
+            with self.subTest(transaction_id=transaction_id):
+                self.assertEqual(self.request(
+                    f"/transactions/{transaction_id}/category", method="PATCH", body={"category": "salary"},
+                )[0], 422)
+        self.assertEqual(self.api.get_transactions(), original_rows)
 
     def test_no_selection_and_explicit_empty_selection_return_all_time(self):
         self.save_calendar_transactions()

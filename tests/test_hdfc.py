@@ -1,13 +1,15 @@
 """Synthetic banking fixtures only; never copy personal email records here."""
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from finvault.database.database import Database
 from finvault.models.email import Email
 from finvault.parsers.hdfc import HDFCParser
 from finvault.processing.transaction_processor import TransactionProcessor
+
+IST = timezone(timedelta(hours=5, minutes=30), "IST")
 
 
 class HDFCParserTests(unittest.TestCase):
@@ -23,6 +25,7 @@ class HDFCParserTests(unittest.TestCase):
         self.assertIsNotNone(transaction)
         self.assertEqual(transaction.currency, "INR")
         self.assertEqual(transaction.email_id, "sample")
+        self.assertEqual(transaction.transaction_date.utcoffset(), timedelta(hours=5, minutes=30))
         return transaction
 
     def test_debit_card_purchase_under_overlapping_credit_label(self):
@@ -51,7 +54,7 @@ class HDFCParserTests(unittest.TestCase):
                 )
                 self.assertEqual(transaction.amount, Decimal("1042.50"))
                 self.assertEqual(transaction.merchant, "EXAMPLE MERCHANT")
-                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 9, 15, 30))
+                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 9, 15, 30, tzinfo=IST))
 
     def test_atm_withdrawal(self):
         transaction = self.parse(
@@ -71,7 +74,7 @@ class HDFCParserTests(unittest.TestCase):
         )
         self.assertEqual(transaction.amount, Decimal("42.50"))
         self.assertEqual(transaction.merchant, "EXAMPLE SHOP")
-        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 9, 15, 30))
+        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 9, 15, 30, tzinfo=IST))
 
     def test_completed_recurring_payment(self):
         transaction = self.parse(
@@ -82,7 +85,7 @@ class HDFCParserTests(unittest.TestCase):
         )
         self.assertEqual(transaction.amount, Decimal("1042.50"))
         self.assertEqual(transaction.merchant, "Example Services")
-        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_reversals_are_credits_at_notification_time(self):
         for wording in ("is", "has been"):
@@ -111,7 +114,7 @@ class HDFCParserTests(unittest.TestCase):
                 self.assertEqual(transaction.merchant, sender.strip() or "payer@example.invalid")
                 self.assertEqual(transaction.reference, "000000000000.")
                 self.assertEqual(transaction.transaction_type, "credit")
-                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_account_credit_variants_do_not_use_available_balance(self):
         for verb, preposition in (("added", "from"), ("credited", "by")):
@@ -126,7 +129,7 @@ class HDFCParserTests(unittest.TestCase):
                 self.assertEqual(transaction.merchant, "NEFT Cr-EXAMPLE-REFERENCE")
                 self.assertEqual(transaction.account, "HDFC XX0000")
                 self.assertEqual(transaction.transaction_type, "credit")
-                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_deposit_alert_uses_credited_amount_and_complete_neft_sender(self):
         reference = "NEFT Cr-TEST0000000-Example Sender-Example Recipient-FIXTURE000000"
@@ -146,7 +149,7 @@ class HDFCParserTests(unittest.TestCase):
                 self.assertEqual(transaction.account, "HDFC XX0000")
                 self.assertEqual(transaction.transaction_type, "credit")
                 self.assertEqual(transaction.source, "Credit")
-                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_deposit_alert_keeps_other_narrations_without_guessing_sender(self):
         for reference in (
@@ -216,7 +219,7 @@ class HDFCParserTests(unittest.TestCase):
                 self.assertEqual(transaction.merchant, "ACH D-EXAMPLE")
                 self.assertEqual(transaction.transaction_type, "debit")
                 self.assertEqual(transaction.source, "Bank transfer")
-                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+                self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_forex_debit_keeps_inr_amount(self):
         transaction = self.parse(
@@ -318,7 +321,7 @@ class HDFCParserTests(unittest.TestCase):
         self.assertEqual(transaction.account, "HDFC CC 0000")
         self.assertEqual(transaction.merchant, "Example\nMerchant")
         self.assertEqual(transaction.transaction_type, "debit")
-        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 9, 15, 30))
+        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 9, 15, 30, tzinfo=IST))
 
     def test_original_upi_credit_format(self):
         transaction = self.parse(
@@ -331,7 +334,7 @@ class HDFCParserTests(unittest.TestCase):
         self.assertEqual(transaction.account, "HDFC XX0000")
         self.assertEqual(transaction.reference, "FIXTURE-REFERENCE")
         self.assertEqual(transaction.transaction_type, "credit")
-        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_original_upi_credit_preserves_sender_across_whitespace_variants(self):
         senders = (
@@ -388,7 +391,7 @@ class HDFCParserTests(unittest.TestCase):
         self.assertEqual(transaction.merchant, "NEFT")
         self.assertEqual(transaction.reference, "FIXTURE-REFERENCE")
         self.assertEqual(transaction.transaction_type, "credit")
-        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13))
+        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_neft_credit_extracts_sender_and_preserves_complete_reference(self):
         for sender in ("Example Sender", "Example   Sender", "Example\tSender"):
@@ -467,6 +470,136 @@ class HDFCParserTests(unittest.TestCase):
             "SELECT amount, merchant, source, transaction_type FROM transactions"
         ).fetchall()
         self.assertEqual(rows, [("42.50", "Example Merchant", "Debit card", "debit")])
+
+
+class HDFCTimestampTests(unittest.TestCase):
+    """Timestamp rules across all supported HDFC transaction formats."""
+
+    def setUp(self):
+        self.parser = HDFCParser()
+
+    def timestamp(self, body, source, header):
+        record = Email("fixture-time", "alerts@example.invalid", "Synthetic alert", header, "", body)
+        result = self.parser.parse(record, source)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.transaction_date.utcoffset(), timedelta(hours=5, minutes=30))
+        return result.transaction_date.isoformat()
+
+    def test_all_date_only_formats_use_ist_header_clock_and_keep_body_date(self):
+        cases = (
+            ("UPI", "Rs.42.50 is debited towards VPA payer@example.invalid "
+             "(Example Merchant) on 13-10-01."),
+            ("Credit", "Rs.42.50 has been successfully credited to your HDFC Bank account "
+             "ending in XX0000. Date: 13-10-01 Sender: Example Sender "
+             "UPI Reference No.: FIXTURE-REFERENCE"),
+            ("Credit", "Rs. 42.50 is successfully credited to your account **0000 "
+             "by VPA payer@example.invalid Example Sender on 13-10-01. "
+             "Your UPI transaction reference number is FIXTURE-REFERENCE"),
+            ("Credit", "Amount received: INR 42.50\nAccount: XX0000\n"
+             "Date: 13-OCT-2001\nReference Details: FIXTURE-REFERENCE"),
+            ("Credit", "The amount credited/received is INR 42.50 in your account XX0000 "
+             "on 13-OCT-2001 on account of Example Sender Your A/c is at Example Branch."),
+            ("Credit", "Rs.INR 42.50 has been successfully added to your account ending "
+             "XX0000 from Example Sender on 13-OCT-2001."),
+            ("Credit", "Rs. INR 42.50 is deducted from your account ending XX0000 "
+             "and added to Example Recipient account on 13-OCT-2001."),
+            ("Debit card", "Your Example Services bill, set up through E-mandate (Auto payment), "
+             "has been successfully paid using your HDFC Bank Debit Card ending 0000. "
+             "Transaction Details: Amount: INR 42.50 Date: 13/10/2001"),
+        )
+        # The two headers are the same instant; conversion crosses midnight.
+        headers = (
+            datetime(2001, 10, 14, 23, 50, tzinfo=timezone.utc),
+            datetime(2001, 10, 15, 5, 20, tzinfo=IST),
+        )
+        for source, body in cases:
+            for header in headers:
+                with self.subTest(source=source, body=body, header=header):
+                    self.assertEqual(self.timestamp(body, source, header), "2001-10-13T05:20:00+05:30")
+
+    def test_all_header_only_formats_convert_the_full_timestamp(self):
+        cases = (
+            ("Debit card", "Thank you for using your HDFC Bank Debit Card ending 0000 "
+             "for Rs 42.50 at Example Merchant"),
+            ("Debit card", "We note that a transaction for Rs 42.50, on your HDFC Bank "
+             "Debit Card ending 0000 at Example Merchant on 10-10-2001 09:15:30 is reversed."),
+            ("Credit", "Rs. 42.50 has been deducted from your HDFC Bank account ending in "
+             "XX0000 for a transfer to payee Example Recipient via NEFT using HDFC Bank Online Banking."),
+            ("Credit", "Amount deducted Of Rs. 42.50 From your HDFC Bank A/c XX0000 "
+             "For NEFT transaction Via HDFC Bank Online Banking."),
+            ("Credit", "Thank you for using HDFC Bank NetBanking for payment of Rs. 42.50 "
+             "from A/c XX0000 to EXAMPLE MERCHANT"),
+            ("Credit", "Thank you for using HDFC Bank NetBanking. We hope your payment experience "
+             "was safe and smooth. Payment Details Amount: Rs. 42.50 From Account: XX0000 "
+             "Paid To: EXAMPLE MERCHANT"),
+        )
+        headers = (
+            datetime(2001, 10, 14, 23, 50, tzinfo=timezone.utc),
+            datetime(2001, 10, 15, 5, 20, tzinfo=IST),
+        )
+        for source, body in cases:
+            for header in headers:
+                with self.subTest(source=source, body=body, header=header):
+                    self.assertEqual(self.timestamp(body, source, header), "2001-10-15T05:20:00+05:30")
+
+    def test_explicit_body_timestamps_convert_offsets_and_preserve_ist(self):
+        cases = (
+            ("Debit card", "Thank you for using your HDFC Bank Debit Card ending 0000 "
+             "for Rs 42.50 at Example Merchant on 13-10-2001 {clock}{zone}."),
+            ("Debit card", "Thank you for using your HDFC Bank Debit Card ending 0000 "
+             "for ATM withdrawal for Rs 42.50 at Example ATM on 13-10-2001 {clock}{zone}."),
+            ("Debit card", "Rs.42.50 is debited from your HDFC Bank Debit Card ending 0000 "
+             "at Example Merchant on 13 Oct, 2001 at {clock}{zone}."),
+            ("Credit card", "Rs. 42.50 is debited from your HDFC Bank Credit Card ending 0000 "
+             "towards Example Merchant on 13 Oct, 2001 at {clock}{zone}"),
+            ("Credit card", "Credit Card ending in 0000. You made a transaction of Rs. 42.50 "
+             "at Example Merchant on 13-10-2001 {clock}{zone}"),
+        )
+        variations = (
+            ("23:50:00", " UTC", "2001-10-14T05:20:00+05:30"),
+            ("23:50:00", " GMT", "2001-10-14T05:20:00+05:30"),
+            ("23:50:00", "Z", "2001-10-14T05:20:00+05:30"),
+            ("23:50:00", " +00:00", "2001-10-14T05:20:00+05:30"),
+            ("23:50:00", " +0000", "2001-10-14T05:20:00+05:30"),
+            ("23:50:00", " -04:00", "2001-10-14T09:20:00+05:30"),
+            ("23:50:00", " +0800", "2001-10-13T21:20:00+05:30"),
+            ("23:50:00", " IST", "2001-10-13T23:50:00+05:30"),
+            ("23:50:00", " +05:30", "2001-10-13T23:50:00+05:30"),
+            ("23:50:00", " +0530", "2001-10-13T23:50:00+05:30"),
+            ("23:50:00", "", "2001-10-13T23:50:00+05:30"),
+            ("23:50:00", " Zero liability protection", "2001-10-13T23:50:00+05:30"),
+            # A known midnight must not be mistaken for a missing time.
+            ("00:00:00", "", "2001-10-13T00:00:00+05:30"),
+        )
+        header = datetime(2001, 10, 15, 12, 0, tzinfo=timezone.utc)
+        for source, template in cases:
+            for clock, zone, expected in variations:
+                with self.subTest(source=source, template=template, clock=clock, zone=zone):
+                    self.assertEqual(self.timestamp(template.format(clock=clock, zone=zone), source, header), expected)
+
+    def test_header_without_offset_is_treated_as_ist(self):
+        header = datetime(2001, 10, 15, 5, 20)
+        body = "Thank you for using your HDFC Bank Debit Card ending 0000 for Rs 42.50 at Example Merchant"
+        self.assertEqual(self.timestamp(body, "Debit card", header), "2001-10-15T05:20:00+05:30")
+        body = "Rs.42.50 is debited towards VPA payer@example.invalid (Example Merchant) on 13-10-01."
+        self.assertEqual(self.timestamp(body, "UPI", header), "2001-10-13T05:20:00+05:30")
+
+    def test_processing_persists_ist_and_keeps_email_header_unchanged(self):
+        database = Database(":memory:")
+        self.addCleanup(database.close)
+        header = datetime(2001, 10, 14, 23, 50, tzinfo=timezone.utc)
+        record = Email(
+            "fixture-time", "alerts@example.invalid", "Synthetic alert", header, "",
+            "Rs.42.50 is debited towards VPA payer@example.invalid (Example Merchant) on 13-10-01.",
+        )
+        database.save_email(record, "UPI")
+        processor = TransactionProcessor(database)
+        processor.process()
+        processor.process()
+        self.assertEqual(database.connection.execute("SELECT transaction_date FROM transactions").fetchall(),
+                         [("2001-10-13T05:20:00+05:30",)])
+        self.assertEqual(database.connection.execute("SELECT received_at FROM emails").fetchone()[0],
+                         "2001-10-14T23:50:00+00:00")
 
 
 if __name__ == "__main__":

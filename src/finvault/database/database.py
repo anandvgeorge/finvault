@@ -148,5 +148,14 @@ class Database:
         )
         self.connection.commit()
 
+    def update_transaction_category(self, transaction_id: int, category: str | None) -> bool:
+        """Persist a category, returning whether the transaction exists."""
+        cursor = self.connection.execute(
+            "UPDATE transactions SET category = ? WHERE id = ?",
+            (category, transaction_id),
+        )
+        self.connection.commit()
+        return cursor.rowcount == 1
+
     def close(self):
         self.connection.close()

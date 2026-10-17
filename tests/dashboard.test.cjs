@@ -14,7 +14,7 @@ function dashboard() {
         fetch: async () => { throw new Error("Unexpected network request"); },
     });
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryMenu, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
+    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryMenu, CategoryEditor, CATEGORY_OPTIONS, saveCategory, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
 }
 
 function selection(years = [2024, 2025]) {
@@ -47,7 +47,7 @@ test("transaction dates show stored time and offset without changing the calenda
     const { renderTransactionDate } = dashboard();
     for (const [timestamp, time] of [
         ["2001-10-13T09:15:30", "09:15:30"],
-        ["2001-10-13T00:10:00+05:30", "00:10:00 +05:30"],
+        ["2001-10-13T00:10:00+05:30", "00:10:00 IST"],
         ["2001-10-13T23:50:00-04:00", "23:50:00 -04:00"],
         ["2001-10-13T09:15:30.123456Z", "09:15:30 UTC"],
         ["2001-10-13T00:00:00", "00:00:00"],
@@ -253,6 +253,141 @@ test("category menu fits a narrow viewport and closes on outside click, scrollin
     button.onclick();
     listeners.get("resize")();
     assert.equal(menu.menu.hidden, true);
+});
+
+test("saving category controls keep keyboard focus but cannot open another menu", () => {
+    const { menu, button, key } = categoryMenu();
+    button.setAttribute("aria-disabled", "true");
+    button.onclick();
+    key("Enter");
+    assert.equal(menu.menu.hidden, true);
+    let blocked = false;
+    button.onkeydown({ key: "Tab", preventDefault() { blocked = true; } });
+    assert.equal(blocked, false);
+    button.setAttribute("aria-disabled", "false");
+    key("Enter");
+    assert.equal(menu.menu.hidden, false);
+});
+
+test("category menu closes before its change handler runs, and unchanged choices send no event", () => {
+    const { menu, button, select } = categoryMenu();
+    let changes = 0;
+    select.dispatchEvent = () => {
+        changes++;
+        assert.equal(menu.button, null);
+        assert.equal(menu.menu.hidden, true);
+        button.onblur();
+    };
+    button.onclick();
+    menu.items[0].onclick();
+    assert.equal(changes, 0);
+    button.onclick();
+    menu.items[1].onclick();
+    assert.equal(changes, 1);
+});
+
+test("category options include Eat out and Lend with the API values", () => {
+    const { CATEGORY_OPTIONS } = dashboard();
+    assert.equal(CATEGORY_OPTIONS.find(([value]) => value === "eat_out")[1], "Eat out");
+    assert.equal(CATEGORY_OPTIONS.find(([value]) => value === "lend")[1], "Lend");
+});
+
+test("category saves use PATCH with JSON and null clears a selection", async () => {
+    const { saveCategory, context } = dashboard();
+    const requests = [];
+    context.fetch = async (url, options) => {
+        requests.push({ url, options });
+        return { ok: true, json: async () => ({ id: 7, category: JSON.parse(options.body).category }) };
+    };
+    await saveCategory(7, "eat_out");
+    await saveCategory(7, null);
+    assert.equal(requests[0].url, "/transactions/7/category");
+    assert.equal(requests[0].options.method, "PATCH");
+    assert.equal(requests[0].options.headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(requests[0].options.body), { category: "eat_out" });
+    assert.deepEqual(JSON.parse(requests[1].options.body), { category: null });
+});
+
+test("HTTP errors, network errors, and mismatched category responses are rejected", async () => {
+    const { saveCategory, context } = dashboard();
+    for (const status of [404, 422, 500]) {
+        context.fetch = async () => ({ ok: false, status, json: () => { throw new Error("Unexpected body read"); } });
+        await assert.rejects(saveCategory(7, "lend"));
+    }
+    context.fetch = async () => { throw new Error("Offline"); };
+    await assert.rejects(saveCategory(7, "lend"));
+    for (const response of [{ id: 8, category: "lend" }, { id: 7, category: "salary" }]) {
+        context.fetch = async () => ({ ok: true, json: async () => response });
+        await assert.rejects(saveCategory(7, "lend"));
+    }
+});
+
+test("category edits report pending/saved states and retain the saved value across stale GET data", async () => {
+    const { CategoryEditor } = dashboard();
+    const pending = deferred();
+    const events = [];
+    const editor = new CategoryEditor(() => pending.promise, (id, state) => events.push({ id, ...state }));
+    const transaction = { id: 7, category: null };
+    const saving = editor.save(transaction, "eat_out");
+    assert.equal(editor.stateFor(transaction).status, "saving");
+    assert.equal(editor.stateFor({ id: 7, category: null }).category, "eat_out");
+    pending.resolve({ id: 7, category: "eat_out" });
+    await saving;
+    assert.equal(transaction.category, "eat_out");
+    assert.equal(editor.stateFor({ id: 7, category: null }).category, "eat_out");
+    assert.deepEqual(events, [
+        { id: 7, category: "eat_out", status: "saving" },
+        { id: 7, category: "eat_out", status: "saved" },
+    ]);
+});
+
+test("failed category edits restore the last saved value and can be retried or cleared", async () => {
+    const { CategoryEditor } = dashboard();
+    let fail = true;
+    const editor = new CategoryEditor(async () => { if (fail) throw new Error("Offline"); }, () => {});
+    const transaction = { id: 7, category: "salary" };
+    await editor.save(transaction, "lend");
+    assert.equal(editor.stateFor(transaction).category, "salary");
+    assert.equal(editor.stateFor(transaction).status, "error");
+    assert.equal(transaction.category, "salary");
+    fail = false;
+    await editor.save(transaction, "lend");
+    assert.equal(editor.stateFor(transaction).status, "saved");
+    assert.equal(transaction.category, "lend");
+    await editor.save(transaction, null);
+    assert.equal(transaction.category, null);
+});
+
+test("category edits skip unchanged values and prevent overlapping saves for the same row", async () => {
+    const { CategoryEditor } = dashboard();
+    const pending = deferred();
+    let calls = 0;
+    const editor = new CategoryEditor(() => { calls++; return pending.promise; }, () => {});
+    const transaction = { id: 7, category: "salary" };
+    await editor.save(transaction, "salary");
+    assert.equal(calls, 0);
+    const saving = editor.save(transaction, "lend");
+    await editor.save({ id: 7, category: "salary" }, "eat_out");
+    assert.equal(calls, 1);
+    pending.resolve();
+    await saving;
+    assert.equal(editor.stateFor(transaction).category, "lend");
+});
+
+test("different transaction categories save independently when responses arrive out of order", async () => {
+    const { CategoryEditor } = dashboard();
+    const first = deferred(), second = deferred();
+    const editor = new CategoryEditor(id => id === 1 ? first.promise : second.promise, () => {});
+    const one = { id: 1, category: null }, two = { id: 2, category: "salary" };
+    const savingOne = editor.save(one, "eat_out"), savingTwo = editor.save(two, "lend");
+    second.resolve();
+    await savingTwo;
+    assert.equal(editor.stateFor(one).status, "saving");
+    assert.equal(two.category, "lend");
+    first.reject(new Error("Offline"));
+    await savingOne;
+    assert.equal(one.category, null);
+    assert.equal(two.category, "lend");
 });
 
 const TRANSACTIONS = [
