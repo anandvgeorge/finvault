@@ -120,8 +120,20 @@ in the existing ignored database.
   atomically with file permissions `600`.
 
 The settings API uses `{"categories": [{"id": "custom", "label": "Custom"}],
-"rules": []}`. Keyword rules can be configured and saved, but automatic
-assignment is not implemented yet.
+"rules": []}`. Keyword rules can be configured and saved. The standalone
+`KeywordCategoryMatcher` accepts validated settings, plain-text email body, and
+transaction type. It matches any configured keyword as a literal substring,
+ignoring case and repeated whitespace; the first eligible rule wins. Rules can
+restrict matching to debit or credit. No match returns `None` (Uncategorized).
+Subject, sender, and transaction merchant fields are not matching inputs.
+
+This is step 1: the matcher is available for testing, but ingestion is not yet
+connected to it. Dashboard categories and existing transactions are unchanged.
+Test the matcher with fictional data using:
+
+```bash
+uv run --locked python -m unittest tests.test_category_matching -v
+```
 
 ## Tests and CI
 
