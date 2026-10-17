@@ -1,6 +1,9 @@
 from pathlib import Path
+from typing import Annotated, Literal
+
 from fastapi.responses import FileResponse
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Path as PathParameter
+from pydantic import BaseModel, ConfigDict
 
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
 from finvault.database.database import Database
@@ -8,6 +11,12 @@ from finvault.database.database import Database
 app = FastAPI()
 
 database = Database()
+
+
+class CategoryUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: Literal["necessary", "lifestyle", "eat_out", "investment", "salary", "lend", "other"] | None
 
 
 @app.get("/")
@@ -130,3 +139,14 @@ def get_transactions(
         }
         for row in rows
     ]
+
+
+@app.patch("/transactions/{transaction_id}/category")
+def update_transaction_category(
+    transaction_id: Annotated[int, PathParameter(gt=0)],
+    update: CategoryUpdate,
+):
+    """Save a category for one transaction; null clears its category."""
+    if not database.update_transaction_category(transaction_id, update.category):
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"id": transaction_id, "category": update.category}

@@ -56,6 +56,30 @@ class DatabaseTests(unittest.TestCase):
             "SELECT email_id FROM transactions ORDER BY email_id"
         ).fetchall(), [("fixture-one",), ("fixture-two",)])
 
+    def test_category_updates_and_clearing_survive_reopening_the_database(self):
+        self.database.save_email(email(), "UPI")
+        self.database.save_transaction(transaction())
+        self.assertTrue(self.database.update_transaction_category(1, "investment"))
+        reopened = Database(str(self.path))
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.connection.execute(
+            "SELECT category FROM transactions WHERE id = 1"
+        ).fetchone(), ("investment",))
+        self.assertTrue(self.database.update_transaction_category(1, None))
+        self.assertEqual(reopened.connection.execute(
+            "SELECT category FROM transactions WHERE id = 1"
+        ).fetchone(), (None,))
+
+    def test_repeated_ingestion_preserves_an_existing_manual_category(self):
+        self.database.save_email(email(), "UPI")
+        self.database.save_transaction(transaction())
+        self.database.update_transaction_category(1, "lifestyle")
+        self.database.save_transaction(transaction())
+        self.assertEqual(self.database.connection.execute(
+            "SELECT category FROM transactions"
+        ).fetchall(), [("lifestyle",)])
+        self.assertFalse(self.database.update_transaction_category(999, "other"))
+
     def test_unprocessed_selection_excludes_saved_transactions_and_keeps_order(self):
         stored = email("fixture-stored")
         pending = email("fixture-pending")
