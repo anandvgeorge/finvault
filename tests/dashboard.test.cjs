@@ -47,7 +47,7 @@ test("transaction dates show stored time and offset without changing the calenda
     const { renderTransactionDate } = dashboard();
     for (const [timestamp, time] of [
         ["2001-10-13T09:15:30", "09:15:30"],
-        ["2001-10-13T00:10:00+05:30", "00:10:00 +05:30"],
+        ["2001-10-13T00:10:00+05:30", "00:10:00 IST"],
         ["2001-10-13T23:50:00-04:00", "23:50:00 -04:00"],
         ["2001-10-13T09:15:30.123456Z", "09:15:30 UTC"],
         ["2001-10-13T00:00:00", "00:00:00"],

@@ -435,7 +435,8 @@
             if (match) {
                 const time = cell.ownerDocument.createElement("span");
                 time.className = "transaction-time";
-                const zone = match[2] === "Z" ? " UTC" : match[2] ? ` ${match[2]}` : "";
+                const zone = match[2] === "+05:30" ? " IST"
+                    : match[2] === "Z" ? " UTC" : match[2] ? ` ${match[2]}` : "";
                 time.textContent = `${match[1]}${zone}`;
                 display.appendChild(time);
             }
