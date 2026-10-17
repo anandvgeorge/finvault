@@ -333,6 +333,17 @@ class HDFCParser:
         return None
 
 
+    @staticmethod
+    def _neft_sender(reference: str) -> str:
+        # Only extract a sender from a recognized narration structure.
+        narration = re.fullmatch(
+            r"NEFT\s+Cr-[A-Z]{4}0[A-Z0-9]{6}-"
+            r"(?P<sender>[^-\r\n]+)-[^-\r\n]+-[^-\s]+",
+            reference,
+            re.IGNORECASE,
+        )
+        return " ".join(narration.group("sender").split()) if narration else ""
+
     def _parse_credit(self, email: Email) -> Transaction | None:
         body = email.body_text
 
@@ -378,20 +389,11 @@ class HDFCParser:
 
         if match:
             reference = match.group("reference").strip()
-            # This narration format contains the bank code, sender, recipient,
-            # and transfer reference. Other formats retain the generic label.
-            narration = re.fullmatch(
-                r"NEFT\s+Cr-[A-Z]{4}0[A-Z0-9]{6}-"
-                r"(?P<sender>[^-\r\n]+)-[^-\r\n]+-[^-\s]+",
-                reference,
-                re.IGNORECASE,
-            )
-            sender = " ".join(narration.group("sender").split()) if narration else ""
             return Transaction(
                 amount=Decimal(match.group("amount").replace(",", "")),
                 currency="INR",
                 transaction_type="credit",
-                merchant=sender or "NEFT",
+                merchant=self._neft_sender(reference) or "NEFT",
                 transaction_date=datetime.strptime(
                     match.group("date"),
                     "%d-%b-%Y",
@@ -429,6 +431,29 @@ class HDFCParser:
                 account=f"HDFC {match.group('account')}",
                 source="Credit",
                 reference=match.group("reference"),
+                email_id=email.gmail_id,
+            )
+
+        # Deposit alerts contain a credited amount followed by a separate balance.
+        match = re.search(
+            r"The amount credited/received is INR\s*(?P<amount>\d[\d,]*(?:\.\d+)?)\s+"
+            r"in your account\s+(?P<account>[Xx*\d]+)\s+on\s+"
+            r"(?P<date>\d{2}-[A-Za-z]{3}-\d{4})\s+on account of\s+"
+            r"(?P<reference>.+?)\s+Your A/c is\b",
+            " ".join(body.split()),
+            re.IGNORECASE,
+        )
+        if match:
+            reference = match.group("reference").strip()
+            return Transaction(
+                amount=Decimal(match.group("amount").replace(",", "")),
+                currency="INR",
+                transaction_type="credit",
+                merchant=self._neft_sender(reference) or reference,
+                transaction_date=datetime.strptime(match.group("date"), "%d-%b-%Y"),
+                account=f"HDFC {match.group('account')}",
+                source="Credit",
+                reference=reference,
                 email_id=email.gmail_id,
             )
 
