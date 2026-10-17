@@ -11,7 +11,7 @@ function settings() {
     const context = vm.createContext({ document: { addEventListener() {} }, fetch: async () => { throw new Error("Unexpected request"); } });
     vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings })", context), context };
+    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings, statusTime, refreshSystemStatus })", context), context };
 }
 
 function fixture() {
@@ -24,6 +24,47 @@ function deferred() {
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
 }
+
+test("status timestamps always display IST, with explicit missing and invalid states", () => {
+    const { statusTime } = settings();
+    assert.match(statusTime("2001-01-01T22:00:00+00:00"), /02 Jan 2001.*03:30:00/);
+    assert.equal(statusTime("2001-01-02T03:30:00+05:30"), statusTime("2001-01-01T22:00:00+00:00"));
+    assert.equal(statusTime(null), "Not recorded yet");
+    assert.equal(statusTime("invalid"), "Unavailable");
+});
+
+test("system status refresh handles errors separately from settings and only links valid commits", async () => {
+    const { context, refreshSystemStatus } = settings();
+    const nodes = Object.fromEntries(["refresh-status", "last-ingestion", "running-commit", "last-deploy-check", "check-result"].map(id => [id, {
+        textContent: "Loading…", dataset: {}, replaceChildren(child) { this.child = child; },
+    }]));
+    context.document.getElementById = id => nodes[id];
+    context.document.createElement = () => ({});
+    let info = { last_ingestion_at: null, commit_id: "a".repeat(40), last_deploy_check_at: "2001-01-01T00:00:00+00:00", last_deploy_check_status: "unchanged" };
+    context.fetch = async (url, options) => {
+        assert.equal(url, "/settings/status");
+        assert.equal(options.cache, "no-store");
+        assert.equal(nodes["refresh-status"].disabled, true);
+        return { ok: true, json: async () => info };
+    };
+    await refreshSystemStatus();
+    assert.equal(nodes["last-ingestion"].textContent, "Not recorded yet");
+    assert.equal(nodes["running-commit"].child.href, `https://github.com/anandvgeorge/finvault/commit/${info.commit_id}`);
+    assert.match(nodes["last-deploy-check"].textContent, /05:30:00/);
+    assert.equal(nodes["check-result"].textContent, "No updates");
+    for (const [state, label] of [["checking", "Checking…"], ["deployed", "Updated"], ["failed", "Failed"], [null, "Not recorded yet"], ["toString", "Not recorded yet"]]) {
+        info.last_deploy_check_status = state;
+        await refreshSystemStatus();
+        assert.equal(nodes["check-result"].textContent, label);
+    }
+    info.commit_id = "<script>invalid</script>";
+    await refreshSystemStatus();
+    assert.equal(nodes["running-commit"].textContent, "Unavailable");
+    context.fetch = async () => { throw new Error("Synthetic connection error"); };
+    await refreshSystemStatus();
+    assert.equal(nodes["running-commit"].textContent, "Couldn’t load status");
+    assert.equal(nodes["refresh-status"].disabled, false);
+});
 
 test("new category IDs handle accents, non-Latin names, numbers, collisions and length limits", () => {
     const { categoryId } = settings();

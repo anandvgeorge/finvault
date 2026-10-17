@@ -113,6 +113,21 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.media_type, "text/html")
         self.assertIn('id="settings-form"', Path(response.path).read_text())
 
+    def test_system_status_reports_only_metadata_and_the_running_commit(self):
+        with patch.object(self.api.runtime_info, "commit_id", "a" * 40):
+            status, body = self.request("/settings/status")
+            self.assertEqual(status, 200)
+            self.assertEqual(body, {"last_ingestion_at": None, "last_deploy_check_at": None,
+                                    "last_deploy_check_status": None, "commit_id": "a" * 40})
+            self.database.record_ingestion_completed()
+            self.database.connection.executemany("INSERT INTO app_metadata VALUES (?, ?)", [
+                ("last_deploy_check_at", "2001-01-01T00:00:00+00:00"),
+                ("last_deploy_check_status", "unchanged"), ("unrelated_private_value", "not exposed"),
+            ])
+            self.database.connection.commit()
+            status, body = self.request("/settings/status")
+            self.assertEqual(body, {**self.database.runtime_status(), "commit_id": "a" * 40})
+
     def test_shared_ui_assets_are_served(self):
         for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu")):
             with self.subTest(name=name):

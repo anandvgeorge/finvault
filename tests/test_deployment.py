@@ -1,6 +1,8 @@
 """Exercise deployment failures without contacting GitHub, Gmail, or systemd."""
 
 import fcntl
+from datetime import datetime
+import sqlite3
 import os
 from pathlib import Path
 import subprocess
@@ -48,11 +50,17 @@ class DeploymentTests(unittest.TestCase):
 
         # Keep sentinels separate from all source and release directories.
         self.sentinels = {}
-        for name in ("credentials.json", "token.json", "data/finvault.db"):
+        for name in ("credentials.json", "token.json"):
             path = self.state / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("Synthetic runtime sentinel\n")
             self.sentinels[path] = path.read_bytes()
+
+        self.database = self.state / "data/finvault.db"
+        self.database.parent.mkdir(parents=True)
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("CREATE TABLE runtime_sentinel (value TEXT)")
+            connection.execute("INSERT INTO runtime_sentinel VALUES ('Synthetic runtime sentinel')")
 
         self.executable("systemctl", r'''
 import os
@@ -111,6 +119,8 @@ python.parent.mkdir(parents=True, exist_ok=True)
 python.write_text("#!" + sys.executable + "\n" + (
     "import os, pathlib, sys\n"
     "release = pathlib.Path(__file__).resolve().parents[2]\n"
+    "if sys.argv[1] == '-' and len(sys.argv) > 2:\n"
+    "    os.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n"
     "if sys.argv[1] == '-' and release.name == os.getenv('FAKE_UNHEALTHY_COMMIT'):\n"
     "    raise SystemExit(1)\n"
 ))
@@ -119,7 +129,11 @@ python.chmod(0o700)
         # The initial installation must also support the mocked rollback probe.
         old_python = self.repo / ".venv/bin/python"
         old_python.parent.mkdir(parents=True)
-        old_python.write_text(f"#!{sys.executable}\nraise SystemExit(0)\n")
+        old_python.write_text(f"#!{sys.executable}\n" + (
+            "import os, sys\n"
+            "if sys.argv[1] == '-' and len(sys.argv) > 2:\n"
+            "    os.execv(sys.executable, [sys.executable, *sys.argv[1:]])\n"
+        ))
         old_python.chmod(0o700)
 
     def executable(self, name, body):
@@ -142,6 +156,13 @@ python.chmod(0o700)
     def assert_runtime_untouched(self):
         for path, contents in self.sentinels.items():
             self.assertEqual(path.read_bytes(), contents)
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute("SELECT value FROM runtime_sentinel").fetchall(), [("Synthetic runtime sentinel",)])
+
+    def metadata(self):
+        with sqlite3.connect(self.database) as connection:
+            exists = connection.execute("SELECT 1 FROM sqlite_master WHERE name = 'app_metadata'").fetchone()
+            return dict(connection.execute("SELECT key, value FROM app_metadata")) if exists else {}
 
     def event_lines(self):
         return self.events.read_text().splitlines() if self.events.exists() else []
@@ -152,6 +173,9 @@ python.chmod(0o700)
         release = self.state / "releases" / self.commit
         self.assertEqual(self.current.resolve(), release)
         self.assertEqual((release / "release.txt").read_text(), "Synthetic release\n")
+        metadata = self.metadata()
+        self.assertEqual(metadata["last_deploy_check_status"], "deployed")
+        self.assertIsNotNone(datetime.fromisoformat(metadata["last_deploy_check_at"]).utcoffset())
         self.assertEqual(self.event_lines(), [
             "stop finvault-ingest.timer", "restart finvault-ui.service",
             "start finvault-ingest.timer",
@@ -161,14 +185,36 @@ python.chmod(0o700)
 
     def test_unchanged_commit_does_not_build_or_restart(self):
         self.assertEqual(self.deploy().returncode, 0)
+        previous_check = self.metadata()["last_deploy_check_at"]
         self.events.unlink()
         result = self.deploy(FAKE_UV_FAIL="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Already running", result.stdout)
         self.assertEqual(self.event_lines(), [])
+        self.assertGreater(self.metadata()["last_deploy_check_at"], previous_check)
+        self.assertEqual(self.metadata()["last_deploy_check_status"], "unchanged")
+        self.assertEqual(len(self.metadata()), 2)
+
+    def test_failed_fetch_records_attempt_time_and_failure(self):
+        self.git("remote", "set-url", "origin", str(self.home / "missing-remote.git"))
+        result = self.deploy()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.metadata()["last_deploy_check_status"], "failed")
+        self.assertIsNotNone(datetime.fromisoformat(self.metadata()["last_deploy_check_at"]).utcoffset())
+        self.assertEqual(self.current.resolve(), self.repo)
+        self.assert_runtime_untouched()
+
+    def test_deploy_check_preserves_ingestion_time(self):
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("CREATE TABLE app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            connection.execute("INSERT INTO app_metadata VALUES ('last_ingestion_at', '2001-01-01T00:00:00+00:00')")
+        self.assertEqual(self.deploy().returncode, 0)
+        self.assertEqual(self.metadata()["last_ingestion_at"], "2001-01-01T00:00:00+00:00")
+        self.assertEqual(len(self.metadata()), 3)
 
     def test_failed_install_leaves_running_release_and_timer_untouched(self):
         result = self.deploy(FAKE_UV_FAIL="1")
+        self.assertEqual(self.metadata()["last_deploy_check_status"], "failed")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.current.resolve(), self.repo)
         self.assertTrue(self.timer.exists())
@@ -180,6 +226,7 @@ python.chmod(0o700)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Previous release restored", result.stdout)
         self.assertEqual(self.current.resolve(), self.repo)
+        self.assertEqual(self.metadata()["last_deploy_check_status"], "failed")
         self.assertEqual(self.event_lines().count("restart finvault-ui.service"), 2)
         self.assertTrue(self.timer.exists())
         self.assert_runtime_untouched()
@@ -211,6 +258,7 @@ python.chmod(0o700)
             result = self.deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Another deployment is running", result.stdout)
+        self.assertEqual(self.metadata(), {})
         self.assertEqual(self.event_lines(), [])
 
     def test_activating_ingestion_is_allowed_to_finish(self):

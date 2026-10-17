@@ -3,19 +3,27 @@ from typing import Annotated
 
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi import FastAPI, HTTPException, Path as PathParameter
+from fastapi import FastAPI, HTTPException, Path as PathParameter, Response
 from pydantic import BaseModel, ConfigDict
 
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
 from finvault.categories import CategoryConfigError, CategoryStore, TomlCategoryStore
 from finvault.database.database import Database
 from finvault.models.category import Category, CategoryId, CategorySettings
+from finvault.runtime import RuntimeInfo
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 database = Database()
 category_store: CategoryStore = TomlCategoryStore()
+runtime_info = RuntimeInfo(Path(__file__).resolve().parents[3])
+
+
+@app.get("/settings/status")
+def get_system_status(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return {**database.runtime_status(), "commit_id": runtime_info.commit_id}
 
 
 class CategoryUpdate(BaseModel):

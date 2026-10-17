@@ -23,7 +23,17 @@
         h2 { margin: 0; font-size: 17px; letter-spacing: -.4px; }
         h2::before { content: "/"; color: var(--yellow); margin-right: 10px; }
         p { margin: 0; }
-        .intro { max-width: 760px; margin-bottom: 24px; color: var(--muted); font-size: 12px; }
+        .intro { margin-bottom: 24px; color: var(--muted); font-size: 12px; }
+        .system-status { margin-bottom: 22px; padding: 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); }
+        .status-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .system-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; margin: 0; }
+        .system-details dt { color: var(--muted); font-size: 11px; }
+        .system-details dd { margin: 5px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+        .system-details a { color: var(--yellow); text-underline-offset: 3px; }
+        .check-result { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+        .check-result[data-state="failed"] { color: var(--error); }
+        .check-result[data-state="checking"] { color: var(--yellow); }
+        .system-note { margin-top: 14px; color: var(--muted); font-size: 10px; }
         .settings-columns { display: grid; gap: 22px; align-items: start; margin-bottom: 22px; }
         .settings-panel { padding: 20px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); box-shadow: 4px 4px 0 #090c08; min-width: 0; }
         .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
@@ -135,6 +145,15 @@
     <main>
         <h1>Settings</h1>
         <p class="intro">Manage your categories and keyword rules. Changes are saved on this server only when you select Save changes.</p>
+        <section class="system-status" aria-labelledby="system-heading">
+            <div class="status-heading"><h2 id="system-heading">System status</h2><button id="refresh-status" type="button" class="button">Refresh</button></div>
+            <dl class="system-details" aria-live="polite">
+                <div><dt>Last completed ingestion · IST</dt><dd id="last-ingestion">Loading…</dd></div>
+                <div><dt>GitHub commit</dt><dd id="running-commit">Loading…</dd></div>
+                <div><dt>Last update check · IST</dt><dd><span id="last-deploy-check">Loading…</span><span id="check-result" class="check-result"></span></dd></div>
+            </dl>
+            <p class="system-note">Ingestion time includes runs with no new emails. The commit ID excludes uncommitted local edits.</p>
+        </section>
         <form id="settings-form" autocomplete="off" novalidate>
             <fieldset id="settings-fields" disabled>
                 <legend class="sr-only">Category and keyword settings</legend>
@@ -171,6 +190,42 @@
     <script src="/static/ui.js"></script>
     <script id="settings-script">
         "use strict";
+
+        function statusTime(value) {
+            if (!value) return "Not recorded yet";
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return "Unavailable";
+            return new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric",
+                hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+            }).format(date);
+        }
+
+        async function refreshSystemStatus() {
+            const refresh = document.getElementById("refresh-status");
+            const ingestion = document.getElementById("last-ingestion"), commit = document.getElementById("running-commit"), check = document.getElementById("last-deploy-check"), result = document.getElementById("check-result");
+            refresh.disabled = true;
+            try {
+                const response = await fetch("/settings/status", { cache: "no-store" });
+                if (!response.ok) throw new Error("Status unavailable");
+                const info = await response.json();
+                ingestion.textContent = statusTime(info.last_ingestion_at);
+                check.textContent = statusTime(info.last_deploy_check_at);
+                const results = { checking: "Checking…", unchanged: "No updates", deployed: "Updated", failed: "Failed" };
+                result.textContent = Object.hasOwn(results, info.last_deploy_check_status) ? results[info.last_deploy_check_status] : "Not recorded yet";
+                result.dataset.state = Object.hasOwn(results, info.last_deploy_check_status) ? info.last_deploy_check_status : "unknown";
+                commit.textContent = "Unavailable";
+                if (/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(info.commit_id)) {
+                    const link = document.createElement("a");
+                    link.href = `https://github.com/anandvgeorge/finvault/commit/${info.commit_id}`;
+                    link.textContent = info.commit_id.slice(0, 12); link.title = info.commit_id;
+                    link.target = "_blank"; link.rel = "noopener noreferrer"; commit.replaceChildren(link);
+                }
+            } catch {
+                ingestion.textContent = commit.textContent = check.textContent = "Couldn’t load status";
+                result.textContent = ""; result.dataset.state = "unknown";
+            } finally { refresh.disabled = false; }
+        }
 
         function categoryId(label, existing) {
             let base = label.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -301,6 +356,8 @@
         }
 
         function initializeSettings() {
+            document.getElementById("refresh-status").onclick = () => { void refreshSystemStatus(); };
+            void refreshSystemStatus();
             const form = document.getElementById("settings-form"), fields = document.getElementById("settings-fields");
             const categories = document.getElementById("category-list"), rules = document.getElementById("rule-list");
             const status = document.getElementById("save-status"), save = document.getElementById("save"), discard = document.getElementById("discard");

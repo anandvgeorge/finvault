@@ -92,8 +92,29 @@ Discard reloads its saved settings. Editing fields alone does not write the file
 Saving rewrites TOML formatting and removes comments. Laptop and Pi settings remain
 separate; opening the Pi's page from your laptop edits the Pi's file.
 
+Settings also shows the last completed ingestion, running Git commit (linked to
+GitHub), and last GitHub update check with its result. Timestamps display in IST;
+use Refresh to reload them. SQLite's `app_metadata` table holds one row per value,
+updated in place rather than keeping a run history. Ingestion records completion
+even with no new emails; exceptions leave the previous completion time intact.
+Parsing warnings do not prevent a run from completing.
+
+`scripts/deploy-pi.sh` records the check time immediately before fetching GitHub,
+then records Checking, No updates, Updated, or Failed. Failed fetches count as
+attempted checks; overlapping invocations that skip the deployment lock do not.
+Old runs show “Not recorded yet” until recorded by the updated code. A running
+release identifies its own commit, including after a rollback. Local checkouts
+capture Git HEAD at server startup; uncommitted edits are excluded from that ID.
+
+If the Pi runs a separately installed copy of the deploy script, update that copy
+too; application deployment alone cannot update that script. For example, after
+deploying this version, copy `current/scripts/deploy-pi.sh` to the script path
+listed by `systemctl --user cat finvault-deploy.service`, retaining its executable
+permissions. Runtime timestamps stay in the existing ignored database.
+
 - `GET /categories`: category IDs and labels only, without private keyword rules.
 - `GET /settings/categories`: complete category and rule settings.
+- `GET /settings/status`: ingestion completion, running commit, update-check time and result.
 - `PUT /settings/categories`: validate and replace the complete settings, saved
   atomically with file permissions `600`.
 
