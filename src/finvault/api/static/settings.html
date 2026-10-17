@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#12140f">
+    <title>Settings · FinVault</title>
+    <link rel="stylesheet" href="/static/ui.css">
+    <style>
+        :root { color-scheme: dark; --canvas: #12140f; --panel: #1b1e17; --raised: #24281e; --border: #3d4432; --ink: #efeedf; --muted: #a4ad96; --yellow: #e5c15b; --yellow-ink: #1d1b11; --error: #dfad99; --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        html { background: var(--canvas); scroll-padding-block: 20px 150px; scrollbar-gutter: stable; }
+        body { max-width: 1320px; margin: 0 auto; padding: 28px 32px 40px; color: var(--ink); background-image: radial-gradient(#e5c15b0a 1px, transparent 1px); background-size: 22px 22px; font: 13px/1.6 var(--mono); }
+        ::selection { background: var(--yellow); color: var(--yellow-ink); }
+        a { color: inherit; }
+        button, input, select, textarea { font: inherit; }
+        button, a { touch-action: manipulation; }
+        button { cursor: pointer; }
+        button:disabled { cursor: default; opacity: .4; }
+        :focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+        h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.6px; }
+        h2 { margin: 0; font-size: 17px; letter-spacing: -.4px; }
+        h2::before { content: "/"; color: var(--yellow); margin-right: 10px; }
+        p { margin: 0; }
+        .intro { max-width: 760px; margin-bottom: 24px; color: var(--muted); font-size: 12px; }
+        .settings-columns { display: grid; gap: 22px; align-items: start; margin-bottom: 22px; }
+        .settings-panel { padding: 20px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); box-shadow: 4px 4px 0 #090c08; min-width: 0; }
+        .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+        .help { margin-bottom: 18px; color: var(--muted); font-size: 11px; }
+        fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
+        .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 3px; color: var(--ink); background: #151911; font-size: 12px; white-space: nowrap; }
+        .button:hover:not(:disabled) { border-color: var(--yellow); color: var(--yellow); }
+        .button.primary { color: var(--yellow-ink); background: var(--yellow); border-color: var(--yellow); font-weight: 700; }
+        .button.primary:hover:not(:disabled) { color: var(--yellow-ink); background: #efd17a; }
+        .button.remove { color: var(--error); }
+        .button.icon { width: 38px; padding: 6px; font-size: 17px; }
+        input, textarea, select { display: block; width: 100%; min-width: 0; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); color: var(--ink); font-size: 12px; }
+        input::placeholder, textarea::placeholder { color: #7e8871; opacity: 1; }
+        input:hover, textarea:hover, select:hover { border-color: #777b4f; }
+        textarea { min-height: 90px; resize: vertical; line-height: 1.6; }
+        select { appearance: none; padding-right: 32px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23e5c15b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+        select option { background: var(--panel); color: var(--ink); }
+        .rule-trigger {
+            display: block; width: 100%; min-width: 0; min-height: 38px; padding: 8px 32px 8px 10px;
+            border: 1px solid var(--border); border-radius: 3px; background-color: var(--canvas); color: var(--ink);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23e5c15b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 10px center;
+            font: 12px/1.6 var(--mono); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .rule-trigger:hover, .rule-trigger[aria-expanded="true"] { border-color: var(--yellow); }
+        #rule-menu .category-option { min-height: 38px; padding: 8px 22px; line-height: 1.6; }
+        label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+        .category-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; min-height: 0; }
+        .category-list .empty { grid-column: 1 / -1; }
+        .category-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; align-items: center; min-width: 0; min-height: 42px; padding: 3px; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); }
+        .category-row:hover, .category-row:focus-within { border-color: #777b4f; }
+        .category-row.editing { border-color: var(--yellow); }
+        .category-name { position: relative; display: block; width: 100%; min-width: 0; min-height: 34px; padding: 6px 20px 6px 7px; border: 0; background: transparent; color: var(--ink); font: 12px/1.5 var(--mono); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .category-name::after { content: "✎"; position: absolute; right: 5px; color: var(--yellow); opacity: 0; }
+        .category-row:hover .category-name::after, .category-name:focus-visible::after { opacity: 1; }
+        .category-name:focus-visible, .category-row .remove:focus-visible { outline-offset: -2px; }
+        .category-row input { min-height: 34px; padding: 6px 7px; border: 0; background: transparent; }
+        .category-row input:focus-visible { outline: 0; }
+        .category-row .remove { width: 30px; min-height: 32px; padding: 0; border: 0; background: transparent; font-size: 20px; }
+        .add-category { display: flex; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
+        .add-category input { flex: 1; }
+        .add-rule { display: flex; justify-content: flex-end; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
+        .empty { padding: 16px 0; color: var(--muted); font-size: 12px; }
+        .rule-list { display: grid; gap: 14px; }
+        .rule-card { min-width: 0; padding: 16px; border: 1px solid var(--border); border-left: 2px solid #777b4f; border-radius: 3px; background: #151911; }
+        .rule-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+        .rule-title { color: var(--yellow); font-size: 12px; font-weight: 500; }
+        .rule-actions { display: flex; gap: 6px; }
+        .rule-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+        .keyword-field { grid-column: 1 / -1; }
+        .field-help { margin-top: 5px; color: var(--muted); font-size: 10px; }
+        .save-bar { position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--raised); box-shadow: 4px 4px 0 #090c08; }
+        .save-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+        .save-status { min-width: 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+        .save-status[data-state="error"] { color: var(--error); }
+        .save-status[data-dirty="true"]:not([data-state="error"]) { color: var(--yellow); }
+        .storage-note { margin: 14px 0 0; color: var(--muted); font-size: 10px; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        @media (min-width: 1001px) {
+            .settings-columns { grid-template-columns: minmax(0, .35fr) minmax(0, .65fr); }
+            .categories-panel .add-category { flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 14px; }
+            .categories-panel .add-category .button { align-self: flex-end; }
+        }
+        @media (min-width: 1001px) and (min-height: 520px) {
+            .categories-panel { position: sticky; top: 20px; max-height: calc(100dvh - 120px); display: flex; flex-direction: column; }
+            .categories-panel .panel-heading, .categories-panel .help, .categories-panel .add-category { flex-shrink: 0; }
+            .categories-panel .category-list { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) var(--canvas); scroll-padding-block: 6px; }
+        }
+        @media (max-width: 1000px) and (min-width: 701px) {
+            body { padding: 24px 24px 48px; }
+            .category-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+        @media (max-width: 700px) {
+            body { padding: 20px 14px 28px; }
+            .settings-panel { padding: 16px 12px; }
+            h1 { font-size: 20px; }
+            h2 { font-size: 15px; }
+            .button, input, select { min-height: 44px; }
+            input, select, textarea { font-size: 16px; }
+            .rule-trigger { min-height: 44px; font-size: 16px; }
+            #rule-menu .category-option { min-height: 44px; font-size: 14px; padding: 10px 22px; }
+            .button.icon { width: 44px; }
+            .category-row { grid-template-columns: minmax(0, 1fr) 32px; }
+            .category-name, .category-row input { min-height: 42px; }
+            .category-row .remove { width: 32px; min-height: 42px; }
+            .add-category { flex-wrap: wrap; }
+            .add-category input { flex-basis: 100%; }
+            .add-category .button { margin-left: auto; }
+            .rule-card { padding: 12px; }
+            .rule-heading { flex-wrap: wrap; }
+            .rule-actions { margin-left: auto; }
+            .rule-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+            .rule-fields > div { flex: 1 1 125px; min-width: 0; }
+            .rule-fields > .keyword-field { flex-basis: 100%; }
+            .save-bar { bottom: 8px; flex-wrap: wrap; gap: 10px; padding: 12px; }
+            .save-status { flex-basis: 100%; }
+            .save-actions { margin-left: auto; }
+        }
+    </style>
+</head>
+<body>
+    <header class="page-header">
+        <a href="/" class="brand" aria-label="FinVault dashboard">
+            <span class="brand-mark" aria-hidden="true">F</span>
+            <span><span class="brand-name">FinVault</span><span class="brand-caption">Personal finance</span></span>
+        </a>
+        <nav class="page-nav" aria-label="Main navigation"><a href="/">Dashboard ↗</a></nav>
+    </header>
+    <main>
+        <h1>Settings</h1>
+        <p class="intro">Manage your categories and keyword rules. Changes are saved on this server only when you select Save changes.</p>
+        <form id="settings-form" autocomplete="off" novalidate>
+            <fieldset id="settings-fields" disabled>
+                <legend class="sr-only">Category and keyword settings</legend>
+                <div class="settings-columns">
+                <section class="settings-panel categories-panel" aria-labelledby="categories-heading">
+                    <div class="panel-heading"><h2 id="categories-heading">Categories</h2></div>
+                    <p class="help">Click or tap a name to rename it. Removing a category keeps existing transaction assignments.</p>
+                    <div id="category-list" class="category-list"></div>
+                    <div class="add-category">
+                        <label for="new-category" class="sr-only">New category name</label>
+                        <input id="new-category" type="text" maxlength="80" placeholder="New category name" autocomplete="off">
+                        <button id="add-category" type="button" class="button">+ Add category</button>
+                    </div>
+                </section>
+                <section class="settings-panel" aria-labelledby="rules-heading">
+                    <div class="panel-heading"><h2 id="rules-heading">Keyword rules</h2></div>
+                    <p class="help">Priority runs from top to bottom. Rules are saved now; automatic assignment is not active yet.</p>
+                    <div id="rule-list" class="rule-list"></div>
+                    <div class="add-rule"><button id="add-rule" type="button" class="button">+ Add rule</button></div>
+                </section>
+                </div>
+            </fieldset>
+            <div class="save-bar">
+                <p id="save-status" class="save-status" role="status" aria-live="polite" data-state="loading">Loading settings…</p>
+                <div class="save-actions">
+                    <button id="retry-load" type="button" class="button" hidden>Try again</button>
+                    <button id="discard" type="button" class="button" disabled>Discard</button>
+                    <button id="save" type="submit" class="button primary" disabled>Save changes</button>
+                </div>
+            </div>
+        </form>
+        <p class="storage-note">Saving updates the private categories.toml file on this server. Comments and formatting aren’t preserved. The repository example is unchanged.</p>
+    </main>
+    <script src="/static/ui.js"></script>
+    <script id="settings-script">
+        "use strict";
+
+        function categoryId(label, existing) {
+            let base = label.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+                .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "category";
+            if (!/^[a-z]/.test(base)) base = `category_${base}`;
+            base = base.slice(0, 64);
+            let id = base;
+            for (let index = 2; existing.has(id); index++) {
+                const suffix = `_${index}`;
+                id = base.slice(0, 64 - suffix.length) + suffix;
+            }
+            return id;
+        }
+
+        class SettingsDraft {
+            constructor(settings) {
+                if (!settings || !Array.isArray(settings.categories) || !Array.isArray(settings.rules)) throw new Error("Invalid settings response.");
+                this.categories = settings.categories.map(category => ({ id: category.id, label: category.label }));
+                this.rules = settings.rules.map(rule => ({ category: rule.category, keywords: [...rule.keywords], transaction_type: rule.transaction_type ?? null }));
+                if (this.validationError()) throw new Error("Invalid settings response.");
+                this.baseline = JSON.stringify(this.snapshot());
+            }
+
+            snapshot() {
+                return { categories: this.categories.map(category => ({ ...category })), rules: this.rules.map(rule => ({ ...rule, keywords: [...rule.keywords] })) };
+            }
+
+            get dirty() { return JSON.stringify(this.snapshot()) !== this.baseline; }
+
+            payload() {
+                const data = this.snapshot();
+                data.categories.forEach(category => { category.label = category.label.trim(); });
+                data.rules.forEach(rule => { rule.keywords = rule.keywords.map(keyword => keyword.trim()); });
+                return data;
+            }
+
+            addCategory(label) {
+                label = label.trim();
+                if (!label || label.length > 80) throw new Error("Enter a category name between 1 and 80 characters.");
+                if (this.categories.some(category => category.label.trim().toLowerCase() === label.toLowerCase())) throw new Error("That category name already exists.");
+                if (this.categories.length >= 500) throw new Error("You can have up to 500 categories.");
+                const category = { id: categoryId(label, new Set(this.categories.map(category => category.id))), label };
+                this.categories.push(category);
+                return category;
+            }
+
+            removeCategory(id) {
+                if (this.rules.some(rule => rule.category === id)) throw new Error("Choose another category for its rules before removing this category.");
+                this.categories = this.categories.filter(category => category.id !== id);
+            }
+
+            addRule() {
+                if (!this.categories.length) throw new Error("Add a category before creating a rule.");
+                if (this.rules.length >= 1000) throw new Error("You can have up to 1,000 rules.");
+                this.rules.push({ category: this.categories[0].id, keywords: [], transaction_type: null });
+            }
+
+            moveRule(index, direction) {
+                const next = index + direction;
+                if (index < 0 || index >= this.rules.length || next < 0 || next >= this.rules.length) return;
+                [this.rules[index], this.rules[next]] = [this.rules[next], this.rules[index]];
+            }
+
+            validationError() {
+                const ids = new Set(), labels = new Set();
+                if (this.categories.length > 500 || this.rules.length > 1000) return "There are too many categories or rules.";
+                for (const [index, category] of this.categories.entries()) {
+                    if (typeof category.id !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(category.id) || ids.has(category.id)) return `Category ${index + 1} has an invalid or duplicate ID.`;
+                    if (typeof category.label !== "string" || !category.label.trim() || category.label.trim().length > 80) return `Enter a name between 1 and 80 characters for category ${index + 1}.`;
+                    const label = category.label.trim().toLowerCase();
+                    if (labels.has(label)) return `Category ${index + 1} has a duplicate name.`;
+                    ids.add(category.id); labels.add(label);
+                }
+                for (const [index, rule] of this.rules.entries()) {
+                    if (!ids.has(rule.category)) return `Choose an available category for rule ${index + 1}.`;
+                    if (![null, "debit", "credit"].includes(rule.transaction_type)) return `Choose Either, Debit, or Credit for rule ${index + 1}.`;
+                    if (!Array.isArray(rule.keywords) || !rule.keywords.length || rule.keywords.length > 100 || rule.keywords.some(keyword => typeof keyword !== "string" || !keyword.trim() || keyword.trim().length > 200)) return `Rule ${index + 1} needs 1–100 keywords, each between 1 and 200 characters.`;
+                }
+                return "";
+            }
+        }
+
+        async function requestSettings(method, payload) {
+            let response;
+            try {
+                response = await fetch("/settings/categories", {
+                    method, cache: "no-store",
+                    ...(payload === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
+                });
+            } catch (error) { throw new Error("Couldn’t reach the server. Try again."); }
+            if (!response.ok) {
+                let detail;
+                try { detail = (await response.json()).detail; } catch (error) {}
+                throw new Error(typeof detail === "string" ? detail : response.status === 422
+                    ? "Check category names and rule fields." : `The server returned an error (${response.status}).`);
+            }
+            return response.json();
+        }
+
+        class SettingsSession {
+            constructor(request, onChange) {
+                this.request = request; this.onChange = onChange;
+                this.draft = null; this.busy = false; this.state = "loading"; this.message = "Loading settings…";
+            }
+
+            changed() { this.state = "ready"; this.message = this.draft.dirty ? "Unsaved changes" : "All changes saved"; this.onChange(false); }
+            error(message) { this.state = "error"; this.message = message; this.onChange(false); }
+
+            async load() {
+                if (this.busy) return;
+                this.busy = true; this.state = "loading"; this.message = "Loading settings…"; this.onChange(false);
+                let render = false;
+                try { this.draft = new SettingsDraft(await this.request("GET")); this.state = "ready"; this.message = "All changes saved"; render = true; }
+                catch (error) { this.state = "error"; this.message = `Couldn’t load settings. ${error.message}`; }
+                finally { this.busy = false; this.onChange(render); }
+            }
+
+            async save() {
+                if (this.busy || !this.draft || !this.draft.dirty) return;
+                const error = this.draft.validationError();
+                if (error) { this.error(error); return; }
+                this.busy = true; this.state = "saving"; this.message = "Saving changes…"; this.onChange(false);
+                let render = false;
+                try { this.draft = new SettingsDraft(await this.request("PUT", this.draft.payload())); this.state = "ready"; this.message = "Changes saved"; render = true; }
+                catch (error) { this.state = "error"; this.message = `Couldn’t save settings. ${error.message} Your changes are still here.`; }
+                finally { this.busy = false; this.onChange(render); }
+            }
+        }
+
+        function initializeSettings() {
+            const form = document.getElementById("settings-form"), fields = document.getElementById("settings-fields");
+            const categories = document.getElementById("category-list"), rules = document.getElementById("rule-list");
+            const status = document.getElementById("save-status"), save = document.getElementById("save"), discard = document.getElementById("discard");
+            const newCategory = document.getElementById("new-category"), addCategory = document.getElementById("add-category"), addRule = document.getElementById("add-rule");
+            const retry = document.getElementById("retry-load");
+            const ruleMenu = new CategoryMenu(document, { id: "rule-menu", triggerClass: "rule-trigger" });
+            const ruleControls = new Map();
+            const session = new SettingsSession(requestSettings, render => {
+                if (session.busy) ruleMenu.close();
+                if (render) { renderCategories(); renderRules(); }
+                const dirty = Boolean(session.draft?.dirty);
+                fields.disabled = session.busy || !session.draft;
+                save.disabled = session.busy || !dirty; discard.disabled = session.busy || !dirty;
+                addRule.disabled = !session.draft?.categories.length || session.busy;
+                addRule.title = session.draft?.categories.length ? "" : "Add a category first";
+                save.textContent = session.state === "saving" ? "Saving…" : "Save changes";
+                status.textContent = session.message; status.dataset.state = session.state; status.dataset.dirty = String(dirty);
+                status.setAttribute("role", session.state === "error" ? "alert" : "status");
+                retry.hidden = session.state !== "error" || Boolean(session.draft);
+                retry.disabled = session.busy;
+                form.setAttribute("aria-busy", String(session.busy));
+            });
+
+            function button(label, action, className = "") {
+                const element = document.createElement("button");
+                element.type = "button"; element.className = `button ${className}`; element.textContent = label; element.onclick = action;
+                return element;
+            }
+
+            function empty(container, message) {
+                const paragraph = document.createElement("p"); paragraph.className = "empty"; paragraph.textContent = message; container.appendChild(paragraph);
+            }
+
+            function renderCategories() {
+                categories.replaceChildren();
+                if (!session.draft.categories.length) empty(categories, "No categories yet. Add your first one below.");
+                session.draft.categories.forEach((category, index) => {
+                    const row = document.createElement("div"); row.className = "category-row";
+                    const input = document.createElement("input"); input.type = "text"; input.maxLength = 80; input.value = category.label; input.dataset.categoryId = category.id;
+                    input.hidden = true;
+                    input.setAttribute("aria-label", `Category ${index + 1} name`); input.autocomplete = "off";
+                    let originalLabel;
+                    const name = button(category.label, () => {
+                        originalLabel = category.label; input.value = category.label;
+                        name.hidden = true; input.hidden = false; row.classList.add("editing"); input.focus(); input.select();
+                    }, "category-name");
+                    const updateName = () => {
+                        name.textContent = category.label.trim() || "Unnamed category";
+                        name.title = `Rename ${category.label.trim() || "category"}`;
+                        name.setAttribute("aria-label", `Rename category ${index + 1}: ${category.label.trim() || "Unnamed category"}`);
+                    };
+                    const finishEdit = () => {
+                        if (input.hidden) return;
+                        category.label = input.value.trim(); input.value = category.label; updateName();
+                        input.hidden = true; name.hidden = false; row.classList.remove("editing"); updateRuleChoices();
+                        if (!session.busy) session.changed();
+                    };
+                    input.oninput = () => { category.label = input.value; updateName(); updateRuleChoices(); session.changed(); };
+                    input.onblur = finishEdit;
+                    input.onkeydown = event => {
+                        if (event.key === "Enter") { event.preventDefault(); finishEdit(); name.focus(); }
+                        if (event.key === "Escape") {
+                            event.preventDefault(); input.value = originalLabel; finishEdit(); name.focus();
+                        }
+                    };
+                    updateName();
+                    const remove = button("×", () => {
+                        try { session.draft.removeCategory(category.id); renderCategories(); renderRules(); session.changed(); newCategory.focus(); }
+                        catch (error) { session.error(error.message); }
+                    }, "remove");
+                    remove.setAttribute("aria-label", `Remove category ${index + 1}`);
+                    remove.title = "Remove category";
+                    row.append(name, input, remove); categories.appendChild(row);
+                });
+            }
+
+            function fillChoices(select, selected) {
+                select.replaceChildren();
+                session.draft.categories.forEach(category => {
+                    const option = document.createElement("option"); option.value = category.id; option.textContent = category.label.trim() || "Unnamed category"; select.appendChild(option);
+                });
+                select.value = selected;
+                const trigger = ruleControls.get(select);
+                if (trigger) trigger.textContent = select.options[select.selectedIndex].textContent;
+            }
+
+            function updateRuleChoices() {
+                ruleMenu.close();
+                rules.querySelectorAll("select[data-rule-category]").forEach((select, index) => fillChoices(select, session.draft.rules[index].category));
+            }
+
+            function field(label, control, id, menuLabel = label) {
+                const wrapper = document.createElement("div"), caption = document.createElement("label");
+                control.id = id; caption.htmlFor = id; caption.textContent = label; wrapper.append(caption, control);
+                if (control.tagName === "SELECT") {
+                    control.setAttribute("aria-label", menuLabel);
+                    const trigger = ruleMenu.enhance(control); trigger.id = `${id}-trigger`; caption.htmlFor = trigger.id;
+                    ruleControls.set(control, trigger);
+                }
+                return wrapper;
+            }
+
+            function renderRules() {
+                ruleMenu.close(); ruleControls.clear();
+                rules.replaceChildren();
+                if (!session.draft.rules.length) empty(rules, session.draft.categories.length ? "No rules yet. Add one to configure keyword matching." : "Add a category before creating a rule.");
+                session.draft.rules.forEach((rule, index) => {
+                    const card = document.createElement("article"); card.className = "rule-card";
+                    const heading = document.createElement("div"); heading.className = "rule-heading";
+                    const title = document.createElement("h3"); title.className = "rule-title"; title.textContent = `Rule ${String(index + 1).padStart(2, "0")}`; title.style.margin = "0";
+                    const actions = document.createElement("div"); actions.className = "rule-actions";
+                    [-1, 1].forEach(direction => {
+                        const label = direction < 0 ? "up" : "down";
+                        const move = button(direction < 0 ? "↑" : "↓", () => {
+                            session.draft.moveRule(index, direction); renderRules(); session.changed();
+                            const moved = rules.children[index + direction], target = moved.querySelector(`[data-move="${label}"]`);
+                            (target.disabled ? moved.querySelector(`[data-move="${label === "up" ? "down" : "up"}"]`) : target).focus();
+                        }, "icon");
+                        move.dataset.move = label; move.setAttribute("aria-label", `Move rule ${index + 1} ${label}`);
+                        move.disabled = direction < 0 ? index === 0 : index === session.draft.rules.length - 1;
+                        actions.appendChild(move);
+                    });
+                    const remove = button("Remove", () => { session.draft.rules.splice(index, 1); renderRules(); session.changed(); addRule.focus(); }, "remove");
+                    remove.setAttribute("aria-label", `Remove rule ${index + 1}`); actions.appendChild(remove); heading.append(title, actions);
+                    const body = document.createElement("div"); body.className = "rule-fields";
+                    const category = document.createElement("select"); category.dataset.ruleCategory = ""; fillChoices(category, rule.category);
+                    category.onchange = () => { rule.category = category.value; session.changed(); };
+                    const type = document.createElement("select");
+                    [["", "Either"], ["debit", "Debit"], ["credit", "Credit"]].forEach(([value, label]) => {
+                        const option = document.createElement("option"); option.value = value; option.textContent = label; type.appendChild(option);
+                    });
+                    type.value = rule.transaction_type || ""; type.onchange = () => { rule.transaction_type = type.value || null; session.changed(); };
+                    const keywords = document.createElement("textarea"); keywords.rows = 3; keywords.value = rule.keywords.join("\n"); keywords.placeholder = "One keyword per line"; keywords.spellcheck = false;
+                    keywords.oninput = () => { rule.keywords = keywords.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean); session.changed(); };
+                    const keywordField = field("Keywords", keywords, `rule-${index}-keywords`); keywordField.className = "keyword-field";
+                    const hint = document.createElement("p"); hint.className = "field-help"; hint.id = `rule-${index}-hint`; hint.textContent = "One keyword per line. Any keyword can match, ignoring case.";
+                    keywords.setAttribute("aria-describedby", hint.id); keywordField.appendChild(hint);
+                    body.append(field("Category", category, `rule-${index}-category`, `Category for rule ${index + 1}`), field("Transaction type", type, `rule-${index}-type`, `Transaction type for rule ${index + 1}`), keywordField);
+                    card.append(heading, body); rules.appendChild(card);
+                });
+            }
+
+            addCategory.onclick = () => {
+                try { const category = session.draft.addCategory(newCategory.value); newCategory.value = ""; renderCategories(); renderRules(); session.changed(); categories.querySelector(`[data-category-id="${category.id}"]`).parentElement.querySelector(".category-name").click(); }
+                catch (error) { session.error(error.message); newCategory.focus(); }
+            };
+            newCategory.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); addCategory.click(); } };
+            addRule.onclick = () => {
+                try { session.draft.addRule(); renderRules(); session.changed(); rules.lastElementChild.querySelector("textarea").focus(); }
+                catch (error) { session.error(error.message); }
+            };
+            form.onsubmit = event => { event.preventDefault(); void session.save(); };
+            discard.onclick = () => { void session.load(); };
+            retry.onclick = () => { void session.load(); };
+            window.addEventListener("beforeunload", event => { if (session.draft?.dirty) { event.preventDefault(); event.returnValue = ""; } });
+            return session.load();
+        }
+
+        document.addEventListener("DOMContentLoaded", initializeSettings);
+    </script>
+</body>
+</html>

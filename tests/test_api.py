@@ -57,14 +57,17 @@ class ApiTests(unittest.TestCase):
             self.save_transaction(message_id, transaction_date=datetime.fromisoformat(date),
                                   amount=Decimal(amount), transaction_type=kind, source=source)
 
-    def request(self, path, parameters=(), *, method="GET", body=None):
+    def request(self, path, parameters=(), *, method="GET", body=None, json_response=True):
         """Exercise ASGI query validation and responses without HTTP dependencies.
 
-        Execute sync handlers inline; worker-thread scheduling is outside these
+        Execute sync handlers and file reads inline; worker-thread scheduling is outside these
         tests. All request handling and SQL still use the real application.
         """
         async def inline(function, *args, **kwargs):
             return function(*args, **kwargs)
+
+        async def inline_thread(function, *args, **thread_options):
+            return function(*args)
 
         async def run():
             messages = []
@@ -87,13 +90,14 @@ class ApiTests(unittest.TestCase):
                 "query_string": urlencode(parameters).encode(),
                 "server": ("testserver", 80), "client": ("127.0.0.1", 1234),
             }
-            with patch("fastapi.routing.run_in_threadpool", new=inline):
+            with patch("fastapi.routing.run_in_threadpool", new=inline), \
+                    patch("anyio.to_thread.run_sync", new=inline_thread):
                 await asyncio.wait_for(self.api.app(scope, receive, send), timeout=3)
             status = next(message["status"] for message in messages
                           if message["type"] == "http.response.start")
             response_body = b"".join(message.get("body", b"") for message in messages
                                      if message["type"] == "http.response.body")
-            return status, json.loads(response_body)
+            return status, json.loads(response_body) if json_response else response_body.decode()
 
         return asyncio.run(run())
 
@@ -102,6 +106,19 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.media_type, "text/html")
         self.assertIn("FinVault", Path(response.path).read_text())
+
+    def test_settings_page_points_to_existing_html(self):
+        response = self.api.settings_page()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.media_type, "text/html")
+        self.assertIn('id="settings-form"', Path(response.path).read_text())
+
+    def test_shared_ui_assets_are_served(self):
+        for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu")):
+            with self.subTest(name=name):
+                status, body = self.request(f"/static/{name}", json_response=False)
+                self.assertEqual(status, 200)
+                self.assertIn(expected, body)
 
     def test_empty_database_returns_zero_summary_and_empty_transactions(self):
         self.assertEqual(self.api.get_overview(period="month"), {

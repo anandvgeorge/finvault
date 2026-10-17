@@ -13,6 +13,7 @@ function dashboard() {
         document: { addEventListener() {} },
         fetch: async () => { throw new Error("Unexpected network request"); },
     });
+    vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
     vm.runInContext(script, context);
     return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryMenu, CategoryEditor, CategoryCatalog, fetchCategoryCatalog, saveCategory, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
 }
@@ -160,7 +161,7 @@ test("visibility can change while loading and a fresh page starts visible again"
     assert.equal(fresh.visible, true);
 });
 
-function categoryMenu() {
+function categoryMenu(options = {}) {
     const listeners = new Map();
     const document = {
         addEventListener(name, handler) { listeners.set(name, handler); },
@@ -192,11 +193,24 @@ function categoryMenu() {
     select.setAttribute("aria-label", "Category for Example Shop");
     document.body.appendChild(select);
     const { CategoryMenu } = dashboard();
-    const menu = new CategoryMenu(document);
+    const menu = new CategoryMenu(document, options);
     const button = menu.enhance(select);
     const key = (key, extra = {}) => button.onkeydown({ key, preventDefault() {}, ...extra });
     return { menu, button, select, listeners, key };
 }
+
+test("shared menus support rule-specific IDs and triggers without changing selection events", () => {
+    const { menu, button, select, key } = categoryMenu({ id: "rule-menu", triggerClass: "rule-trigger" });
+    assert.equal(menu.menu.id, "rule-menu");
+    assert.equal(button.className, "rule-trigger");
+    button.onclick();
+    key("End");
+    assert.equal(button.getAttribute("aria-activedescendant"), "rule-menu-5");
+    key("Enter");
+    assert.equal(select.selectedIndex, 5);
+    assert.equal(select.lastEvent, "change");
+    assert.equal(button.textContent, "Other");
+});
 
 test("category menu previews keyboard choices, Escape cancels, and Enter commits", () => {
     const { menu, button, select, key } = categoryMenu();

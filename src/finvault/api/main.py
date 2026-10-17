@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, HTTPException, Path as PathParameter
 from pydantic import BaseModel, ConfigDict
 
@@ -11,6 +12,7 @@ from finvault.database.database import Database
 from finvault.models.category import Category, CategoryId, CategorySettings
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 database = Database()
 category_store: CategoryStore = TomlCategoryStore()
@@ -54,6 +56,11 @@ def dashboard():
     return FileResponse(
         Path(__file__).parent / "static" / "index.html"
     )
+
+
+@app.get("/settings")
+def settings_page():
+    return FileResponse(Path(__file__).parent / "static" / "settings.html")
 
 
 @app.get("/years")

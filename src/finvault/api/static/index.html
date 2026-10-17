@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#12140f">
     <title>FinVault</title>
+    <link rel="stylesheet" href="/static/ui.css">
     <style>
         :root {
             color-scheme: dark;
@@ -23,7 +24,7 @@
             --mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
         }
         * { box-sizing: border-box; }
-        html { background: var(--canvas); scroll-padding-top: 20px; }
+        html { background: var(--canvas); scroll-padding-top: 20px; scrollbar-gutter: stable; }
         body {
             font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
             color: var(--ink);
@@ -43,26 +44,7 @@
             outline: 2px solid var(--yellow);
             outline-offset: 4px;
         }
-        .page-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-            padding-bottom: 22px;
-            margin-bottom: 28px;
-            border-bottom: 1px solid var(--border);
-        }
-        .brand { display: flex; align-items: center; gap: 14px; }
-        .brand-mark {
-            display: grid; place-items: center; width: 42px; height: 42px;
-            color: var(--yellow-ink); background: var(--yellow);
-            font: 800 25px var(--mono); box-shadow: 3px 3px 0 #080b07;
-        }
         h1 { margin: 0; font: 700 27px/1.2 var(--mono); letter-spacing: -1px; }
-        .brand-caption { margin: 3px 0 0; color: var(--muted); font: 10px/1.4 var(--mono); letter-spacing: 2px; text-transform: uppercase; }
-        .page-nav { display: flex; gap: 20px; font: 11px var(--mono); text-transform: uppercase; letter-spacing: .7px; }
-        .page-nav a { text-decoration: none; color: var(--muted); padding: 10px 0; }
-        .page-nav a:hover { color: var(--yellow); }
         .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
         .section-heading h2 { margin: 0; font: 600 18px var(--mono); letter-spacing: -.4px; }
         .section-heading h2::before { content: "/"; color: var(--yellow); margin-right: 10px; }
@@ -186,23 +168,6 @@
         .category-trigger { min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .category-trigger[aria-disabled="true"] { cursor: wait; opacity: .65; }
         .category-trigger[data-save-state="error"] { border-color: var(--debit); }
-        .category-menu {
-            position: fixed;
-            z-index: 100;
-            padding: 4px;
-            overflow-y: auto;
-            background: var(--panel);
-            color: var(--ink);
-            border: 1px solid var(--yellow);
-            border-radius: 3px;
-            box-shadow: 4px 4px 0 #090c08;
-            scrollbar-width: thin;
-            scrollbar-color: var(--border) var(--panel);
-        }
-        .category-option { position: relative; min-height: 36px; padding: 9px 22px; border-radius: 2px; font: 500 12px/1.5 var(--mono); text-align: center; cursor: pointer; overflow-wrap: anywhere; }
-        .category-option[aria-selected="true"] { color: var(--yellow); }
-        .category-option[aria-selected="true"]::after { content: "✓"; position: absolute; right: 9px; }
-        .category-option[data-active="true"] { background: var(--yellow); color: var(--yellow-ink); }
         select option { background: var(--panel); color: var(--ink); font-family: var(--mono); }
         select option:checked { background: var(--yellow); color: var(--yellow-ink); }
         @media (max-width: 1000px) and (min-width: 701px) {
@@ -213,13 +178,7 @@
         }
         @media (max-width: 700px) {
             body { padding: 20px 14px 40px; }
-            .page-header { padding-bottom: 18px; margin-bottom: 20px; gap: 12px; }
-            .brand { gap: 10px; }
-            .brand-mark { width: 34px; height: 36px; font-size: 22px; }
             h1 { font-size: 22px; }
-            .brand-caption { font-size: 9px; letter-spacing: 1px; }
-            .page-nav { gap: 12px; font-size: 10px; letter-spacing: 0; }
-            .page-nav a:first-child { display: none; }
             .section-heading { margin-bottom: 12px; }
             .section-heading h2 { font-size: 16px; }
             .period-selector { padding: 12px; margin-bottom: 20px; }
@@ -279,13 +238,14 @@
 </head>
 <body>
     <header class="page-header">
-        <div class="brand">
+        <a href="/" class="brand" aria-label="FinVault dashboard">
             <span class="brand-mark" aria-hidden="true">F</span>
-            <div><h1>FinVault</h1><p class="brand-caption">Personal finance</p></div>
-        </div>
-        <nav class="page-nav" aria-label="Dashboard sections">
+            <div><h1 class="brand-name">FinVault</h1><p class="brand-caption">Personal finance</p></div>
+        </a>
+        <nav class="page-nav" aria-label="Main navigation">
             <a href="#overview-heading">Overview</a>
             <a href="#transactions-heading">Transactions</a>
+            <a href="/settings">Settings ↗</a>
         </nav>
     </header>
     <div class="section-heading">
@@ -363,6 +323,7 @@
             </table>
         </div>
     </section>
+    <script src="/static/ui.js"></script>
     <script id="dashboard-script">
         "use strict";
 
@@ -507,148 +468,6 @@
                     mask.setAttribute("role", "img");
                     mask.setAttribute("aria-label", "Amount hidden");
                     element.appendChild(mask);
-                }
-            }
-        }
-
-        class CategoryMenu {
-            constructor(document) {
-                this.document = document;
-                this.view = document.defaultView;
-                this.menu = document.createElement("div");
-                this.menu.id = "category-menu";
-                this.menu.className = "category-menu";
-                this.menu.setAttribute("role", "listbox");
-                this.menu.hidden = true;
-                document.body.appendChild(this.menu);
-                this.menu.onpointerdown = event => event.preventDefault();
-                document.addEventListener("pointerdown", event => {
-                    if (this.button && event.target !== this.button && !this.menu.contains(event.target)) this.close();
-                });
-                document.addEventListener("scroll", event => {
-                    if (!this.menu.contains(event.target)) this.close();
-                }, true);
-                this.view.addEventListener("resize", () => this.close());
-            }
-
-            enhance(select) {
-                const button = this.document.createElement("button");
-                button.type = "button";
-                button.className = "category-trigger";
-                button.textContent = select.options[select.selectedIndex].textContent;
-                button.setAttribute("role", "combobox");
-                button.setAttribute("aria-label", select.getAttribute("aria-label"));
-                button.setAttribute("aria-haspopup", "listbox");
-                button.setAttribute("aria-controls", this.menu.id);
-                button.setAttribute("aria-expanded", "false");
-                button.onclick = () => {
-                    if (button.getAttribute("aria-disabled") !== "true") {
-                        this.button === button ? this.close() : this.open(select, button);
-                    }
-                };
-                button.onkeydown = event => this.keydown(event, select, button);
-                button.onblur = () => { if (this.button === button) this.close(true); };
-                select.hidden = true;
-                select.parentNode.appendChild(button);
-                return button;
-            }
-
-            open(select, button) {
-                if (button.getAttribute("aria-disabled") === "true") return;
-                this.close();
-                this.select = select;
-                this.button = button;
-                this.search = "";
-                this.searchTime = 0;
-                this.menu.replaceChildren();
-                this.menu.setAttribute("aria-label", select.getAttribute("aria-label"));
-                this.items = Array.from(select.options, (option, index) => {
-                    const item = this.document.createElement("div");
-                    item.id = `${this.menu.id}-${index}`;
-                    item.className = "category-option";
-                    item.textContent = option.textContent;
-                    item.setAttribute("role", "option");
-                    item.setAttribute("aria-selected", String(index === select.selectedIndex));
-                    item.onpointermove = () => this.highlight(index);
-                    item.onclick = () => { this.highlight(index); this.close(true); button.focus(); };
-                    this.menu.appendChild(item);
-                    return item;
-                });
-                button.setAttribute("aria-expanded", "true");
-                this.menu.hidden = false;
-                const rect = button.getBoundingClientRect();
-                const width = Math.min(rect.width, this.view.innerWidth - 16);
-                const below = this.view.innerHeight - rect.bottom - 14;
-                const above = rect.top - 14;
-                const down = below >= Math.min(this.menu.scrollHeight, 280) || below >= above;
-                this.menu.style.width = `${width}px`;
-                this.menu.style.left = `${Math.max(8, Math.min(rect.left, this.view.innerWidth - width - 8))}px`;
-                this.menu.style.maxHeight = `${Math.max(0, Math.min(280, down ? below : above))}px`;
-                this.menu.style.top = `${down ? rect.bottom + 6 : rect.top - this.menu.getBoundingClientRect().height - 6}px`;
-                this.highlight(select.selectedIndex);
-            }
-
-            highlight(index) {
-                this.activeIndex = Math.max(0, Math.min(index, this.items.length - 1));
-                this.items.forEach((item, position) => { item.dataset.active = String(position === this.activeIndex); });
-                const active = this.items[this.activeIndex];
-                this.button.setAttribute("aria-activedescendant", active.id);
-                if (active.offsetTop < this.menu.scrollTop) this.menu.scrollTop = active.offsetTop;
-                else if (active.offsetTop + active.offsetHeight > this.menu.scrollTop + this.menu.clientHeight) {
-                    this.menu.scrollTop = active.offsetTop + active.offsetHeight - this.menu.clientHeight;
-                }
-            }
-
-            close(commit = false) {
-                if (!this.button) return;
-                const select = this.select;
-                const changed = commit && select.selectedIndex !== this.activeIndex;
-                if (commit) {
-                    select.selectedIndex = this.activeIndex;
-                    this.button.textContent = select.options[this.activeIndex].textContent;
-                }
-                this.button.setAttribute("aria-expanded", "false");
-                this.button.removeAttribute("aria-activedescendant");
-                this.menu.hidden = true;
-                this.menu.replaceChildren();
-                this.button = this.select = null;
-                // A change handler can disable the button or rerender the row.
-                if (changed) select.dispatchEvent(new this.view.Event("change", { bubbles: true }));
-            }
-
-            keydown(event, select, button) {
-                if (button.getAttribute("aria-disabled") === "true") {
-                    if (event.key !== "Tab") event.preventDefault();
-                    return;
-                }
-                const open = this.button === button;
-                const key = event.key;
-                if (key === "Escape") {
-                    if (open) { event.preventDefault(); this.close(); }
-                    return;
-                }
-                if (key === "Tab") { if (open) this.close(true); return; }
-                if (["Enter", " ", "ArrowDown", "ArrowUp", "Home", "End", "PageUp", "PageDown"].includes(key)) {
-                    event.preventDefault();
-                    if (!open) this.open(select, button);
-                    else if (key === "Enter" || key === " " || (event.altKey && key === "ArrowUp")) { this.close(true); return; }
-                    if (key === "Home" || (!open && key === "ArrowUp")) this.highlight(0);
-                    else if (key === "End") this.highlight(this.items.length - 1);
-                    else if (open && key.startsWith("Arrow")) this.highlight(this.activeIndex + (key === "ArrowDown" ? 1 : -1));
-                    else if (key === "PageDown" || key === "PageUp") this.highlight(this.activeIndex + (key === "PageDown" ? 10 : -10));
-                } else if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-                    event.preventDefault();
-                    if (!open) this.open(select, button);
-                    const now = Date.now();
-                    this.search = now - this.searchTime < 700 ? this.search + key.toLowerCase() : key.toLowerCase();
-                    this.searchTime = now;
-                    const repeated = [...this.search].every(character => character === this.search[0]);
-                    const query = repeated ? this.search[0] : this.search;
-                    const start = repeated ? this.activeIndex + 1 : 0;
-                    for (let offset = 0; offset < this.items.length; offset++) {
-                        const index = (start + offset) % this.items.length;
-                        if (this.items[index].textContent.toLowerCase().startsWith(query)) { this.highlight(index); break; }
-                    }
                 }
             }
         }

@@ -82,14 +82,24 @@ so existing transaction assignments remain intact. Refresh the dashboard to load
 changes on desktop and mobile; no server restart is needed. Removed definitions
 remain visible as unavailable on transactions that already use them.
 
+Use **Settings** at the dashboard's top right (or open `/settings`) to edit
+categories and keyword rules. Add categories, rename labels, and move rules up or
+down to change priority. On desktop, category tiles stay visible beside the rules
+as you scroll; click or tap a name to rename it, then Enter to finish or Escape
+to cancel that rename. Enter one keyword per line and choose Either, Debit, or
+Credit for each rule. Save changes writes the server's private `categories.toml`;
+Discard reloads its saved settings. Editing fields alone does not write the file.
+Saving rewrites TOML formatting and removes comments. Laptop and Pi settings remain
+separate; opening the Pi's page from your laptop edits the Pi's file.
+
 - `GET /categories`: category IDs and labels only, without private keyword rules.
 - `GET /settings/categories`: complete category and rule settings.
 - `PUT /settings/categories`: validate and replace the complete settings, saved
   atomically with file permissions `600`.
 
 The settings API uses `{"categories": [{"id": "custom", "label": "Custom"}],
-"rules": []}`. Keyword rules can be stored now using the example's format, but
-automatic assignment and the Settings page are not implemented yet.
+"rules": []}`. Keyword rules can be configured and saved, but automatic
+assignment is not implemented yet.
 
 ## Tests and CI
 
@@ -99,10 +109,10 @@ Run the unit tests locally:
 uv run --locked python -m unittest discover -s tests -v
 ```
 
-Run dashboard selection and loading tests with Node.js (no npm install needed):
+Run dashboard and settings interaction tests with Node.js (no npm install needed):
 
 ```bash
-node --test tests/dashboard.test.cjs
+node --test tests/*.test.cjs
 ```
 
 [GitHub Actions CI](.github/workflows/ci.yml) runs the same tests on pushes and
