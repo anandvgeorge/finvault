@@ -71,6 +71,10 @@ Refunds can stay in **Independent categories**. Groups and links are stored in
 the same private settings file; see `categories.example.toml` for an example.
 Category pickers expand one group at a time and list its categories alphabetically.
 
+On the dashboard, click a main-category card to show its subcategories and
+transactions. Click a subcategory to narrow the list; **Clear ×** resets the
+category filter while keeping your selected dates.
+
 Analysis percentages use credits from **Income** and all its subcategories for
 the selected period. To use another main category, choose it under **Income main
 category** in Settings and save.

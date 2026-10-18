@@ -196,12 +196,15 @@ class ApiTests(unittest.TestCase):
         self.assertIn('id="settings-form"', Path(response.path).read_text())
 
     def test_analysis_page_and_navigation_are_served(self):
-        status, html = self.request("/analysis", json_response=False)
+        response = self.api.analysis_page()
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "/#analysis-heading")
+        status, html = self.request("/", json_response=False)
         self.assertEqual(status, 200)
         self.assertIn('id="analysis-results"', html)
-        for path in ("/", "/settings"):
-            with self.subTest(path=path):
-                self.assertIn('href="/analysis"', self.request(path, json_response=False)[1])
+        self.assertIn('id="transactions-table"', html)
+        self.assertEqual(html.count('class="period-selector"'), 1)
+        self.assertIn('href="#analysis-heading"', html)
 
     def test_system_status_reports_only_metadata_and_the_running_commit(self):
         with patch.object(self.api.runtime_info, "commit_id", "a" * 40):
@@ -280,9 +283,14 @@ class ApiTests(unittest.TestCase):
             "income_group": None, "income_total": None,
             "totals": {"total_debits": "135.35", "total_credits": "1210.12", "transaction_count": 9},
             "groups": [
-                {"id": "needs", "label": "Needs", "total_debits": "0.30", "total_credits": "0.07", "transaction_count": 3, "income_percentage": None},
-                {"id": "earnings", "label": "Earnings", "total_debits": "0.05", "total_credits": "1200.05", "transaction_count": 2, "income_percentage": None},
-                {"id": "empty", "label": "Empty group", "total_debits": "0.00", "total_credits": "0.00", "transaction_count": 0, "income_percentage": None},
+                {"id": "needs", "label": "Needs", "total_debits": "0.30", "total_credits": "0.07", "transaction_count": 3, "income_percentage": None,
+                 "categories": [
+                     {"id": "goods", "label": "Goods", "total_debits": "0.20", "total_credits": "0.07", "transaction_count": 2, "income_percentage": None},
+                     {"id": "housing", "label": "Housing", "total_debits": "0.10", "total_credits": "0.00", "transaction_count": 1, "income_percentage": None},
+                 ]},
+                {"id": "earnings", "label": "Earnings", "total_debits": "0.05", "total_credits": "1200.05", "transaction_count": 2, "income_percentage": None,
+                 "categories": [{"id": "pay", "label": "Pay", "total_debits": "0.05", "total_credits": "1200.05", "transaction_count": 2, "income_percentage": None}]},
+                {"id": "empty", "label": "Empty group", "total_debits": "0.00", "total_credits": "0.00", "transaction_count": 0, "income_percentage": None, "categories": []},
             ],
             "independent": [
                 {"id": "lend", "label": "Lend", "total_debits": "100.00", "total_credits": "0.00", "transaction_count": 1},
@@ -384,6 +392,8 @@ class ApiTests(unittest.TestCase):
         january = self.request("/analysis/summary", [("years", 2001), ("months", "2001-01")])[1]
         self.assertEqual(january["income_total"], "1000.00")
         self.assertEqual([group["income_percentage"] for group in january["groups"]], ["125.0", "100.0"])
+        self.assertEqual({category["id"]: category["income_percentage"] for category in january["groups"][1]["categories"]},
+                         {"other_income": "40.0", "pay": "60.0"})
         self.assertNotIn("income_percentage", january["independent"][0])
         february = self.request("/analysis/summary", [("years", 2001), ("months", "2001-02")])[1]
         self.assertEqual(february["income_total"], "0.00")

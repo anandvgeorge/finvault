@@ -42,6 +42,7 @@ def summarize_groups(
     """
     totals, uncategorized = _Totals(), _Totals()
     groups = {group.id: _Totals() for group in settings.groups}
+    category_totals = {category: _Totals() for category in settings.category_groups}
     labels = {category.id: category.label for category in settings.categories}
     independent = {
         category.id: _Totals() for category in settings.categories
@@ -53,6 +54,7 @@ def summarize_groups(
             target = uncategorized
         elif category in settings.category_groups:
             target = groups[settings.category_groups[category]]
+            category_totals[category].add(amount, transaction_type)
         else:
             if category not in independent:
                 independent[category] = _Totals()
@@ -75,7 +77,13 @@ def summarize_groups(
         "totals": totals.as_dict(),
         "groups": [
             {"id": group.id, "label": group.label, **groups[group.id].as_dict(),
-             "income_percentage": percentage(group.id, groups[group.id])}
+             "income_percentage": percentage(group.id, groups[group.id]),
+             "categories": [
+                 {"id": category.id, "label": category.label, **category_totals[category.id].as_dict(),
+                  "income_percentage": percentage(group.id, category_totals[category.id])}
+                 for category in sorted(settings.categories, key=lambda item: item.label.casefold())
+                 if settings.category_groups.get(category.id) == group.id
+             ]}
             for group in settings.groups
         ],
         "independent": [

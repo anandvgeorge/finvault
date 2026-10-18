@@ -15,6 +15,7 @@ function fixture() {
             set textContent(value) { this.text = String(value); this.children = []; },
             setAttribute(name, value) { this.attributes.set(name, value); },
             getAttribute(name) { return this.attributes.get(name); },
+            focus() { this.focused = true; },
             replaceChildren(...children) { this.text = ""; this.children = children; },
             appendChild(child) { this.children.push(child); child.parentNode = this; },
         };
@@ -28,7 +29,7 @@ function fixture() {
     for (const filename of ["summary-controls.js", "analysis.js"]) {
         vm.runInContext(readFileSync(resolve(__dirname, `../src/finvault/api/static/${filename}`), "utf8"), context);
     }
-    return { document, ...vm.runInContext("({AnalysisLoader, AnalysisView, initializeAnalysis})", context),
+    return { document, ...vm.runInContext("({AnalysisView, CategorySelection, PeriodPicker, AmountVisibility})", context),
         get: id => document.getElementById(id) };
 }
 
@@ -36,16 +37,13 @@ function summary(count = 2) {
     return {
         income_group: "pay", income_total: "100.00",
         totals: { total_debits: "42.50", total_credits: "100.00", transaction_count: count },
-        groups: [{ id: "custom", label: "Custom <img src=x>", total_debits: "42.50", total_credits: "0.00", transaction_count: 1, income_percentage: "42.5" }],
+        groups: [{ id: "custom", label: "Custom <img src=x>", total_debits: "42.50", total_credits: "0.00", transaction_count: 1, income_percentage: "42.5", categories: [
+            { id: "shop", label: "Example shop", total_debits: "42.50", total_credits: "0.00", transaction_count: 1, income_percentage: "42.5" },
+            { id: "unused", label: "Unused", total_debits: "0.00", total_credits: "0.00", transaction_count: 0, income_percentage: "0.0" },
+        ] }],
         independent: [{ id: "refund", label: "Refund", total_debits: "0.00", total_credits: "100.00", transaction_count: 1 }],
         uncategorized: { total_debits: "0.00", total_credits: "0.00", transaction_count: 0 },
     };
-}
-
-function deferred() {
-    let resolve, reject;
-    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-    return { promise, resolve, reject };
 }
 
 test("main group cards omit zero sides, preserve mixed totals, and keep safe labels and persistent masking", () => {
@@ -53,14 +51,14 @@ test("main group cards omit zero sides, preserve mixed totals, and keep safe lab
     const view = new AnalysisView(document);
     const data = summary();
     data.groups.push(
-        { label: "Example income", total_debits: "0.00", total_credits: "100.00", transaction_count: 1, income_percentage: "100.0" },
-        { label: "Example mixed", total_debits: "5.00", total_credits: "2.00", transaction_count: 2, income_percentage: "125.0" },
-        { label: "Example empty", total_debits: "0.00", total_credits: "0.00", transaction_count: 0 },
+        { id: "income", categories: [], label: "Example income", total_debits: "0.00", total_credits: "100.00", transaction_count: 1, income_percentage: "100.0" },
+        { id: "mixed", categories: [], label: "Example mixed", total_debits: "5.00", total_credits: "2.00", transaction_count: 2, income_percentage: "125.0" },
+        { id: "empty", categories: [], label: "Example empty", total_debits: "0.00", total_credits: "0.00", transaction_count: 0 },
     );
     view.update({ status: "ready", summary: data });
     const card = get("group-cards").children[0];
     assert.equal(card.children[0].textContent, "Custom <img src=x>");
-    assert.equal(card.children[0].children.length, 0);
+    assert.equal(card.children[0].children[0].children.length, 0);
     assert.equal(card.children[1].children[0].children[0].textContent, "1 transaction");
     assert.equal(card.children[1].children[1].textContent, "42.5%");
     assert.equal(card.children[2].children[0].className, "amount-line debit");
@@ -77,11 +75,10 @@ test("main group cards omit zero sides, preserve mixed totals, and keep safe lab
     assert.equal(empty.children[2].children.length, 1);
     assert.equal(empty.children[2].textContent, "Total₹0");
     assert.equal(empty.children[1].children[1].textContent, "—");
-    assert.match(get("selection-summary").textContent, /Credits₹100/);
     assert.match(get("other-cards").textContent, /Refund.*Credits₹100.*Uncategorized/);
     get("toggle-totals").onclick();
     assert.doesNotMatch(get("group-cards").textContent, /%/);
-    for (const id of ["selection-summary", "group-cards", "other-cards"]) {
+    for (const id of ["group-cards", "other-cards"]) {
         assert.doesNotMatch(get(id).textContent, /₹/);
         assert.match(get(id).textContent, /••••/);
     }
@@ -105,43 +102,16 @@ test("analysis handles empty selections and missing main groups without inventin
     assert.match(get("group-cards").textContent, /No main categories configured/);
     assert.equal(get("group-cards").children[0].children[0].href, "/settings");
     assert.match(get("other-cards").textContent, /Uncategorized/);
-    assert.match(get("selection-summary").textContent, /0 transactions/);
-});
-
-test("analysis requests ignore stale responses and failures even when the transport ignores abort", async () => {
-    const { AnalysisLoader } = fixture();
-    const requests = [], events = [];
-    const loader = new AnalysisLoader((url, signal) => {
-        const request = { ...deferred(), url, signal };
-        requests.push(request);
-        return request.promise;
-    }, result => events.push(result));
-    const first = loader.load("years=2001"), second = loader.load("years=2002");
-    assert.equal(requests[0].signal.aborted, true);
-    assert.equal(requests[1].url, "/analysis/summary?years=2002");
-    requests[1].resolve(summary()); await second;
-    requests[0].resolve(summary(99)); await first;
-    assert.equal(events.filter(event => event.status === "ready").length, 1);
-    assert.equal(events.at(-1).summary.totals.transaction_count, 2);
-    const third = loader.load("years=2003"), fourth = loader.load("");
-    requests[2].reject(new Error("Fictional failure")); await third;
-    assert.equal(events.at(-1).status, "loading");
-    requests[3].reject(new Error("Current failure")); await fourth;
-    assert.equal(events.at(-1).status, "error");
-    const retry = loader.load("");
-    assert.equal(requests[4].url, "/analysis/summary");
-    requests[4].resolve(summary()); await retry;
-    assert.equal(events.at(-1).status, "ready");
 });
 
 test("analysis starts this month and combines year/month selections using the existing period rules", async () => {
-    const { initializeAnalysis, document, get } = fixture();
+    const { PeriodPicker, document, get } = fixture();
     const now = new Date(), currentYear = now.getFullYear(), earlierYear = currentYear - 1;
     const requests = [];
-    await initializeAnalysis(document, async url => {
-        requests.push(url);
-        return url === "/years" ? [currentYear, earlierYear] : summary();
+    const picker = new PeriodPicker(document, [currentYear, earlierYear], query => {
+        requests.push(`/analysis/summary${query ? `?${query}` : ""}`);
     });
+    picker.refresh();
     const initial = new URLSearchParams(requests.at(-1).split("?")[1]);
     assert.equal(initial.get("months"), `${currentYear}-${String(now.getMonth() + 1).padStart(2, "0")}`);
     assert.equal(get("this-month").getAttribute("aria-pressed"), "true");
@@ -160,32 +130,74 @@ test("analysis starts this month and combines year/month selections using the ex
     await get("this-month").onclick();
     assert.equal(requests.at(-1).split("?")[1], initial.toString());
     assert.equal(earlierRow.children[1].hidden, true);
-    assert.equal(get("data-status").textContent, "");
 });
 
-test("analysis retries calendar failures and summary failures without displaying old amounts", async () => {
-    const { initializeAnalysis, document, get } = fixture();
-    let failYears = true, failSummary = true;
-    await initializeAnalysis(document, async url => {
-        if (url === "/years") {
-            if (failYears) throw new Error("Fictional calendar failure");
-            return [];
-        }
-        if (failSummary) throw new Error("Fictional summary failure");
-        return summary();
-    });
-    assert.match(get("data-status").textContent, /load filters/);
-    assert.equal(get("retry").hidden, false);
-    failYears = false;
-    await get("retry").onclick();
-    assert.match(get("data-status").textContent, /load this selection/);
-    assert.equal(get("this-month").disabled, true);
-    failSummary = false;
-    await get("retry").onclick();
-    assert.equal(get("retry").hidden, true);
-    assert.match(get("group-cards").textContent, /₹42.5/);
-    failSummary = true;
-    await get("all-periods").onclick();
-    assert.equal(get("group-cards").textContent, "");
-    assert.equal(get("analysis-results").getAttribute("aria-busy"), "false");
+
+test("card selection filters main groups, subcategories, independent categories and Uncategorized", () => {
+    const { CategorySelection } = fixture();
+    const selection = new CategorySelection();
+    const data = summary();
+    data.groups.push({ id: "another", label: "Another", categories: [{ id: "other", label: "Other" }] });
+    selection.update(data);
+    const rows = [{ id: 1, category: "shop" }, { id: 2, category: "unused" },
+        { id: 3, category: "refund" }, { id: 4, category: null }, { id: 5, category: "other" }];
+    const ids = () => selection.apply(rows).map(row => row.id);
+    selection.toggleGroup("custom");
+    assert.deepEqual(ids(), [1, 2]);
+    selection.toggleCategory("shop", "custom");
+    assert.deepEqual(ids(), [1]);
+    assert.equal(selection.label(), "Custom <img src=x> › Example shop");
+    selection.toggleCategory("shop", "custom");
+    assert.deepEqual(ids(), [1, 2]);
+    selection.toggleGroup("another");
+    assert.deepEqual(ids(), [5]);
+    selection.toggleCategory("refund");
+    assert.deepEqual(ids(), [3]);
+    selection.toggleUncategorized();
+    assert.deepEqual(ids(), [4]);
+    selection.toggleUncategorized();
+    assert.deepEqual(ids(), [1, 2, 3, 4, 5]);
+    selection.toggleGroup("custom");
+    selection.toggleCategory("shop", "custom");
+    selection.update({ ...data, groups: [{ ...data.groups[0], categories: [] }] });
+    assert.equal(selection.label(), "All categories");
+});
+
+test("expanding subcategory cards preserves shared masking, totals, selection and keyboard focus", () => {
+    const { AnalysisView, AmountVisibility, document, get } = fixture();
+    const amounts = new AmountVisibility(get("toggle-totals"), "totals");
+    const overview = document.createElement("p");
+    amounts.set(overview, "1000.00");
+    let changes = 0;
+    const view = new AnalysisView(document, amounts, () => { changes++; });
+    const data = summary();
+    view.update({ status: "ready", summary: data });
+    const groupButton = get("group-cards").children[0].children[0].children[0];
+    groupButton.onclick();
+    assert.equal(groupButton.getAttribute("aria-pressed"), "true");
+    assert.equal(get("subcategory-section").hidden, false);
+    assert.equal(get("subcategory-cards").children.length, 2);
+    assert.match(get("subcategory-cards").textContent, /42.5%/);
+    const shop = get("subcategory-cards").children[0].children[0].children[0];
+    shop.onclick();
+    assert.match(get("category-selection-label").textContent, /Example shop/);
+    const activeShop = get("subcategory-cards").children[0].children[0].children[0];
+    assert.equal(activeShop.getAttribute("aria-pressed"), "true");
+    assert.equal(activeShop.focused, true);
+    const registeredFields = amounts.amounts.size;
+    get("toggle-totals").onclick();
+    assert.equal(overview.textContent, "••••");
+    assert.doesNotMatch(get("subcategory-cards").textContent, /[₹%]/);
+    get("all-subcategories").onclick();
+    assert.equal(view.selection.current.kind, "group");
+    assert.equal(amounts.amounts.size, registeredFields);
+    view.update({ status: "loading" });
+    view.update({ status: "ready", summary: data });
+    assert.equal(view.selection.current.kind, "group");
+    assert.doesNotMatch(get("subcategory-cards").textContent, /[₹%]/);
+    get("clear-category-selection").onclick();
+    assert.equal(get("subcategory-section").hidden, true);
+    get("toggle-totals").onclick();
+    assert.equal(overview.textContent, "₹1,000");
+    assert.ok(changes >= 3);
 });

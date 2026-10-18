@@ -166,6 +166,8 @@ class AmountVisibility {
 
     clear() { this.amounts.clear(); }
 
+    remove(element) { this.amounts.delete(element); }
+
     render(element, amount) {
         element.replaceChildren();
         if (element.id === "net-cashflow") {
