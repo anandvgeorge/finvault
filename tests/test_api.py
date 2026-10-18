@@ -277,11 +277,12 @@ class ApiTests(unittest.TestCase):
         status, body = self.request("/analysis/summary")
         self.assertEqual(status, 200)
         self.assertEqual(body, {
+            "income_group": None, "income_total": None,
             "totals": {"total_debits": "135.35", "total_credits": "1210.12", "transaction_count": 9},
             "groups": [
-                {"id": "needs", "label": "Needs", "total_debits": "0.30", "total_credits": "0.07", "transaction_count": 3},
-                {"id": "earnings", "label": "Earnings", "total_debits": "0.05", "total_credits": "1200.05", "transaction_count": 2},
-                {"id": "empty", "label": "Empty group", "total_debits": "0.00", "total_credits": "0.00", "transaction_count": 0},
+                {"id": "needs", "label": "Needs", "total_debits": "0.30", "total_credits": "0.07", "transaction_count": 3, "income_percentage": None},
+                {"id": "earnings", "label": "Earnings", "total_debits": "0.05", "total_credits": "1200.05", "transaction_count": 2, "income_percentage": None},
+                {"id": "empty", "label": "Empty group", "total_debits": "0.00", "total_credits": "0.00", "transaction_count": 0, "income_percentage": None},
             ],
             "independent": [
                 {"id": "lend", "label": "Lend", "total_debits": "100.00", "total_credits": "0.00", "transaction_count": 1},
@@ -360,11 +361,48 @@ class ApiTests(unittest.TestCase):
         self.category_store.path.unlink()
         self.assertEqual(self.request("/analysis/summary"), (200, {
             "totals": zero, "groups": [], "independent": [], "uncategorized": zero,
+            "income_group": None, "income_total": None,
         }))
         self.category_store.path.write_text('invalid = "fictional private keyword"\n')
         status, body = self.request("/analysis/summary")
         self.assertEqual(status, 503)
         self.assertNotIn("fictional private keyword", json.dumps(body))
+
+    def test_analysis_percentages_use_configured_income_credits_and_the_selected_period(self):
+        self.category_store.save(CategorySettings(
+            categories=tuple(Category(id=key, label=key.title()) for key in ("shop", "pay", "other_income", "refund")),
+            groups=(CategoryGroup(id="living", label="Living"), CategoryGroup(id="earnings", label="Earnings")),
+            category_groups={"shop": "living", "pay": "earnings", "other_income": "earnings"}, income_group="earnings",
+        ))
+        for index, (category, kind, amount, month) in enumerate((
+            ("shop", "debit", "1250.00", 1), ("shop", "credit", "20.00", 1),
+            ("pay", "credit", "600.00", 1), ("other_income", "credit", "400.00", 1), ("pay", "debit", "7.00", 1),
+            ("refund", "credit", "5000.00", 1), ("shop", "debit", "10.00", 2),
+        )):
+            self.save_transaction(f"fixture-percentage-{index}", category=category, amount=Decimal(amount),
+                                  transaction_type=kind, transaction_date=datetime(2001, month, 1))
+        january = self.request("/analysis/summary", [("years", 2001), ("months", "2001-01")])[1]
+        self.assertEqual(january["income_total"], "1000.00")
+        self.assertEqual([group["income_percentage"] for group in january["groups"]], ["125.0", "100.0"])
+        self.assertNotIn("income_percentage", january["independent"][0])
+        february = self.request("/analysis/summary", [("years", 2001), ("months", "2001-02")])[1]
+        self.assertEqual(february["income_total"], "0.00")
+        self.assertTrue(all(group["income_percentage"] is None for group in february["groups"]))
+        self.assertEqual(self.request("/analysis/summary")[1]["groups"][0]["income_percentage"], "126.0")
+        settings = self.category_store.load().model_dump()
+        settings["income_group"] = None
+        self.category_store.save(CategorySettings.model_validate(settings))
+        self.assertTrue(all(group["income_percentage"] is None
+                            for group in self.request("/analysis/summary")[1]["groups"]))
+        # An existing Income group works without adding the optional setting.
+        settings["groups"][1]["label"] = "Income"
+        self.category_store.save(CategorySettings.model_validate(settings))
+        automatic = self.request("/analysis/summary", [("years", 2001), ("months", "2001-01")])[1]
+        self.assertEqual(automatic["income_group"], "earnings")
+        self.assertEqual(automatic["income_total"], "1000.00")
+        self.assertEqual([group["income_percentage"] for group in automatic["groups"]], ["125.0", "100.0"])
+        self.assertNotIn('income_group =', self.category_store.path.read_text())
+        self.assertIsNone(self.category_store.load().income_group)
 
     def test_overview_totals_and_period_filters(self):
         # Match SQLite's current UTC date without using any real transaction data.
@@ -442,6 +480,7 @@ class ApiTests(unittest.TestCase):
             ],
             "groups": [],
             "category_groups": {},
+            "income_group": None,
         }
         self.assertEqual(self.request("/settings/categories", method="PUT", body=payload), (200, payload))
         self.assertEqual(self.request("/settings/categories"), (200, payload))
@@ -463,6 +502,7 @@ class ApiTests(unittest.TestCase):
             "rules": [{"category": "custom", "keywords": ["example merchant"], "transaction_type": None}],
             "groups": [{"id": "needs", "label": "Example needs"}],
             "category_groups": {"custom": "needs"},
+            "income_group": "needs",
         }
         self.assertEqual(self.request("/settings/categories", method="PUT", body=payload), (200, payload))
         self.assertEqual(self.request("/settings/categories"), (200, payload))
@@ -477,6 +517,7 @@ class ApiTests(unittest.TestCase):
     def test_group_settings_reject_invalid_links_without_replacing_saved_config(self):
         original = self.category_store.path.read_bytes()
         for extra in (
+            {"income_group": "missing"},
             {"category_groups": {"missing": "needs"}},
             {"category_groups": {"custom": "missing"}},
             {"category_groups": {"custom": ["needs", "other"]}},
@@ -492,7 +533,7 @@ class ApiTests(unittest.TestCase):
         payload = {"categories": [{"id": "custom", "label": "Custom"}], "rules": []}
         status, body = self.request("/settings/categories", method="PUT", body=payload)
         self.assertEqual(status, 200)
-        self.assertEqual(body, {**payload, "groups": [], "category_groups": {}})
+        self.assertEqual(body, {**payload, "groups": [], "category_groups": {}, "income_group": None})
 
     def test_invalid_settings_are_rejected_without_changing_private_file(self):
         original = self.category_store.path.read_bytes()
@@ -511,7 +552,7 @@ class ApiTests(unittest.TestCase):
     def test_config_edits_are_live_and_missing_file_has_no_builtin_fallback(self):
         self.category_store.path.unlink()
         self.assertEqual(self.request("/categories"), (200, []))
-        self.assertEqual(self.request("/settings/categories"), (200, {"categories": [], "rules": [], "groups": [], "category_groups": {}}))
+        self.assertEqual(self.request("/settings/categories"), (200, {"categories": [], "rules": [], "groups": [], "category_groups": {}, "income_group": None}))
         self.save_transaction("fixture-one")
         self.assertEqual(self.request("/transactions/1/category", method="PATCH", body={"category": "salary"})[0], 422)
         self.category_store.path.write_text('[categories]\ncustom = "Custom"\n')

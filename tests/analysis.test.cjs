@@ -34,8 +34,9 @@ function fixture() {
 
 function summary(count = 2) {
     return {
+        income_group: "pay", income_total: "100.00",
         totals: { total_debits: "42.50", total_credits: "100.00", transaction_count: count },
-        groups: [{ id: "custom", label: "Custom <img src=x>", total_debits: "42.50", total_credits: "0.00", transaction_count: 1 }],
+        groups: [{ id: "custom", label: "Custom <img src=x>", total_debits: "42.50", total_credits: "0.00", transaction_count: 1, income_percentage: "42.5" }],
         independent: [{ id: "refund", label: "Refund", total_debits: "0.00", total_credits: "100.00", transaction_count: 1 }],
         uncategorized: { total_debits: "0.00", total_credits: "0.00", transaction_count: 0 },
     };
@@ -52,15 +53,16 @@ test("main group cards omit zero sides, preserve mixed totals, and keep safe lab
     const view = new AnalysisView(document);
     const data = summary();
     data.groups.push(
-        { label: "Example income", total_debits: "0.00", total_credits: "100.00", transaction_count: 1 },
-        { label: "Example mixed", total_debits: "5.00", total_credits: "2.00", transaction_count: 2 },
+        { label: "Example income", total_debits: "0.00", total_credits: "100.00", transaction_count: 1, income_percentage: "100.0" },
+        { label: "Example mixed", total_debits: "5.00", total_credits: "2.00", transaction_count: 2, income_percentage: "125.0" },
         { label: "Example empty", total_debits: "0.00", total_credits: "0.00", transaction_count: 0 },
     );
     view.update({ status: "ready", summary: data });
     const card = get("group-cards").children[0];
     assert.equal(card.children[0].textContent, "Custom <img src=x>");
     assert.equal(card.children[0].children.length, 0);
-    assert.equal(card.children[1].textContent, "1 transaction");
+    assert.equal(card.children[1].children[0].children[0].textContent, "1 transaction");
+    assert.equal(card.children[1].children[1].textContent, "42.5%");
     assert.equal(card.children[2].children[0].className, "amount-line debit");
     assert.equal(card.children[2].children.length, 1);
     assert.equal(card.children[2].children[0].textContent, "Debits₹42.5");
@@ -68,13 +70,17 @@ test("main group cards omit zero sides, preserve mixed totals, and keep safe lab
     assert.equal(income.children[2].children.length, 1);
     assert.equal(income.children[2].children[0].className, "amount-line credit");
     assert.equal(income.children[2].textContent, "Credits₹100");
+    assert.equal(income.children[1].children[1].textContent, "100%");
     assert.equal(mixed.children[2].children.length, 2);
     assert.equal(mixed.children[2].textContent, "Debits₹5Credits₹2");
+    assert.equal(mixed.children[1].children[1].textContent, "125%");
     assert.equal(empty.children[2].children.length, 1);
     assert.equal(empty.children[2].textContent, "Total₹0");
+    assert.equal(empty.children[1].children[1].textContent, "—");
     assert.match(get("selection-summary").textContent, /Credits₹100/);
     assert.match(get("other-cards").textContent, /Refund.*Credits₹100.*Uncategorized/);
     get("toggle-totals").onclick();
+    assert.doesNotMatch(get("group-cards").textContent, /%/);
     for (const id of ["selection-summary", "group-cards", "other-cards"]) {
         assert.doesNotMatch(get(id).textContent, /₹/);
         assert.match(get(id).textContent, /••••/);
@@ -85,6 +91,8 @@ test("main group cards omit zero sides, preserve mixed totals, and keep safe lab
     assert.doesNotMatch(get("group-cards").textContent, /₹/);
     get("toggle-totals").onclick();
     assert.match(get("group-cards").textContent, /Debits₹42.5/);
+    assert.match(get("group-cards").textContent, /42.5%/);
+    assert.doesNotMatch(get("other-cards").textContent, /%/);
 });
 
 test("analysis handles empty selections and missing main groups without inventing groups", () => {

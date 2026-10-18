@@ -71,6 +71,10 @@ Refunds can stay in **Independent categories**. Groups and links are stored in
 the same private settings file; see `categories.example.toml` for an example.
 Category pickers expand one group at a time and list its categories alphabetically.
 
+Analysis percentages use credits from **Income** and all its subcategories for
+the selected period. To use another main category, choose it under **Income main
+category** in Settings and save.
+
 In Settings, select **Preview**, then **Apply** to categorise existing
 Uncategorized transactions. Leave the month blank for all data, or select a month.
 These buttons use the server hosting the page and keep existing assignments.

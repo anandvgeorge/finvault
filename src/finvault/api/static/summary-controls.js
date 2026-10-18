@@ -173,7 +173,9 @@ class AmountVisibility {
                 : Number(amount) > 0 ? "positive" : Number(amount) < 0 ? "negative" : "neutral";
         }
         if (this.visible) {
-            element.textContent = `₹${Number(amount).toLocaleString("en-IN")}`;
+            element.textContent = element.dataset.format === "percentage"
+                ? amount == null ? "—" : `${Number(amount).toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`
+                : `₹${Number(amount).toLocaleString("en-IN")}`;
         } else {
             const mask = element.ownerDocument.createElement("span");
             mask.textContent = "••••";

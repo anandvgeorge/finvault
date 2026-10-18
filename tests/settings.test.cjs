@@ -15,7 +15,7 @@ function settings() {
 }
 
 function fixture() {
-    return { categories: [{ id: "custom", label: "Custom" }, { id: "travel", label: "Travel" }], rules: [], groups: [], category_groups: {} };
+    return { categories: [{ id: "custom", label: "Custom" }, { id: "travel", label: "Travel" }], rules: [], groups: [], category_groups: {}, income_group: null };
 }
 
 function plain(value) { return JSON.parse(JSON.stringify(value)); }
@@ -253,6 +253,7 @@ test("existing settings edits preserve groups, independent categories and rule t
     const source = fixture();
     source.categories.push({ id: "refunds", label: "Refunds" });
     source.groups = [{ id: "leisure", label: "Example leisure" }];
+    source.income_group = "leisure";
     source.category_groups = { travel: "leisure" };
     source.rules = [{ category: "travel", keywords: ["example trip"], transaction_type: null }];
     let saved;
@@ -265,6 +266,7 @@ test("existing settings edits preserve groups, independent categories and rule t
     session.changed();
     await session.save();
     assert.deepEqual(saved.groups, source.groups);
+    assert.equal(saved.income_group, "leisure");
     assert.deepEqual(saved.category_groups, { travel: "leisure" });
     assert.equal(saved.category_groups.refunds, undefined);
     assert.deepEqual(saved.rules, source.rules);
@@ -277,6 +279,9 @@ test("existing settings edits preserve groups, independent categories and rule t
     await session.save();
     assert.deepEqual(saved.category_groups, {});
     assert.deepEqual(saved.groups, source.groups);
+    session.draft.removeGroup("leisure");
+    assert.equal(session.draft.payload().income_group, null);
+    assert.equal(session.draft.dirty, true);
 });
 
 test("legacy settings have optional groups and group validation prevents invalid saves", () => {
@@ -542,7 +547,7 @@ test("Discard reloads current server settings; failed reload preserves the unsav
     assert.equal(session.draft.categories[0].label, "Unsaved");
     assert.equal(session.draft.dirty, true);
     fail = false;
-    source = { categories: [{ id: "server", label: "Current server label" }], rules: [], groups: [], category_groups: {} };
+    source = { categories: [{ id: "server", label: "Current server label" }], rules: [], groups: [], category_groups: {}, income_group: null };
     await session.load();
     assert.deepEqual(plain(session.draft.payload()), source);
     assert.equal(session.draft.dirty, false);

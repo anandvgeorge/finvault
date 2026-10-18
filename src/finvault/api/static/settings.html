@@ -213,6 +213,13 @@
                     <p id="category-feedback" class="sr-only" role="status" aria-live="polite"></p>
                     <div class="add-category">
                         <div>
+                            <label id="income-group-label" for="income-group">Income main category</label>
+                            <select id="income-group" aria-label="Income main category"><option value="">Automatic (Income)</option></select>
+                            <p class="field-help">Automatically uses Income, including all its subcategories. Choose another group to override, then save.</p>
+                        </div>
+                    </div>
+                    <div class="add-category">
+                        <div>
                             <label for="new-category">New category name</label>
                             <input id="new-category" type="text" maxlength="80" placeholder="New category name" autocomplete="off">
                         </div>
@@ -502,6 +509,7 @@
                 const links = settings.category_groups === undefined ? {} : settings.category_groups;
                 if (!links || typeof links !== "object" || Array.isArray(links)) throw new Error("Invalid main category assignments response.");
                 this.categoryGroups = { ...links };
+                this.incomeGroup = settings.income_group ?? null;
                 if (this.validationError()) throw new Error("Invalid settings response.");
                 this.baseline = JSON.stringify(this.snapshot());
             }
@@ -511,6 +519,7 @@
                     categories: this.categories.map(category => ({ ...category })),
                     rules: this.rules.map(rule => ({ ...rule, keywords: [...rule.keywords] })),
                     groups: this.groups.map(group => ({ ...group })),
+                    income_group: this.incomeGroup,
                     category_groups: Object.fromEntries(this.categories
                         .filter(category => Object.hasOwn(this.categoryGroups, category.id))
                         .map(category => [category.id, this.categoryGroups[category.id]])),
@@ -558,6 +567,7 @@
             removeGroup(id) {
                 if (!this.groups.some(group => group.id === id)) throw new Error("Choose an available main category.");
                 this.groups = this.groups.filter(group => group.id !== id);
+                if (this.incomeGroup === id) this.incomeGroup = null;
                 for (const [category, group] of Object.entries(this.categoryGroups)) {
                     if (group === id) delete this.categoryGroups[category];
                 }
@@ -621,6 +631,7 @@
                 for (const [category, group] of Object.entries(this.categoryGroups)) {
                     if (!ids.has(category) || !groupIds.has(group)) return "Main category assignments must use available categories and main categories.";
                 }
+                if (this.incomeGroup !== null && !groupIds.has(this.incomeGroup)) return "Choose an available income main category.";
                 return "";
             }
         }
@@ -690,12 +701,17 @@
             const groupTrigger = groupMenu.enhance(newCategoryGroup);
             groupTrigger.id = "new-category-group-trigger";
             document.getElementById("new-category-group-label").htmlFor = groupTrigger.id;
+            const incomeGroup = document.getElementById("income-group");
+            const incomeMenu = new CategoryMenu(document, { id: "income-group-menu", triggerClass: "rule-trigger" });
+            const incomeTrigger = incomeMenu.enhance(incomeGroup);
+            incomeTrigger.id = "income-group-trigger";
+            document.getElementById("income-group-label").htmlFor = incomeTrigger.id;
             const ruleControls = new Map();
             let browserBackfill;
             let categoryDrag;
             const session = new SettingsSession(requestSettings, render => {
                 if (session.busy || render) categoryDrag?.cancel();
-                if (session.busy) { ruleMenu.close(); ruleCategoryMenu.close(); groupMenu.close(); moveDialog.close(); }
+                if (session.busy) { ruleMenu.close(); ruleCategoryMenu.close(); groupMenu.close(); incomeMenu.close(); moveDialog.close(); }
                 if (render) { moveDialog.close(); renderCategories(); renderRules(); }
                 const dirty = Boolean(session.draft?.dirty);
                 fields.disabled = session.busy || !session.draft;
@@ -711,6 +727,10 @@
                 browserBackfill?.refresh();
             });
             browserBackfill = initializeBrowserBackfill(session);
+            incomeGroup.onchange = () => {
+                session.draft.incomeGroup = incomeGroup.value || null;
+                session.changed();
+            };
             categoryDrag = new CategoryDrag(document, {
                 container: categories, scroller: document.querySelector(".category-manager"),
                 canDrag: () => Boolean(session.draft && !session.busy && !moveDialog.open),
@@ -768,6 +788,18 @@
                 });
                 newCategoryGroup.value = session.draft.groups.some(group => group.id === preferred) ? preferred : "";
                 groupTrigger.textContent = newCategoryGroup.options[newCategoryGroup.selectedIndex].textContent;
+                incomeMenu.close(); incomeGroup.replaceChildren();
+                const notSelected = document.createElement("option");
+                notSelected.value = "";
+                notSelected.textContent = session.draft.groups.some(group => group.label.trim().toLowerCase() === "income")
+                    ? "Automatic (Income)" : "Automatic (no Income group)";
+                incomeGroup.appendChild(notSelected);
+                session.draft.groups.forEach(group => {
+                    const option = document.createElement("option"); option.value = group.id;
+                    option.textContent = group.label.trim() || "Unnamed main category"; incomeGroup.appendChild(option);
+                });
+                incomeGroup.value = session.draft.incomeGroup || "";
+                incomeTrigger.textContent = incomeGroup.options[incomeGroup.selectedIndex].textContent;
             }
 
             function focusCategory(id, selector = ".category-move") {

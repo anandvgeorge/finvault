@@ -34,6 +34,10 @@ h2 { margin-bottom: 16px; font-size: 15px; letter-spacing: -.3px; }
 }
 .analysis-card h3 { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .card-count { margin: 6px 0 16px; color: var(--muted); font-size: 10px; }
+.card-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; white-space: nowrap; }
+.card-count-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.count-short { display: none; }
+.income-percentage { flex: 0 0 auto; color: var(--yellow); font-variant-numeric: tabular-nums; }
 .card-amounts { margin: 0; display: grid; gap: 8px; }
 .amount-line { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .amount-line dt { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
@@ -62,6 +66,8 @@ h2 { margin-bottom: 16px; font-size: 15px; letter-spacing: -.3px; }
     .analysis-card { padding: 14px 12px; }
     .analysis-card h3 { font-size: 12px; }
     .card-count { margin-bottom: 12px; }
+    .count-full { display: none; }
+    .count-short { display: inline; }
     .amount-line { display: block; }
     .amount-line dd { margin-top: 3px; font-size: clamp(14px, 4vw, 20px); }
     .selection-summary { padding: 14px 12px; }

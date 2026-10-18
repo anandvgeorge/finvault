@@ -70,7 +70,21 @@ class AnalysisView {
     card(entry, compact = false) {
         const card = this.node("article", "analysis-card");
         card.appendChild(this.node("h3", "", entry.label));
-        card.appendChild(this.node("p", "card-count", this.count(entry.transaction_count)));
+        const count = this.node("p", compact ? "card-count card-meta" : "card-count");
+        if (compact) {
+            const label = this.node("span", "card-count-label");
+            label.appendChild(this.node("span", "count-full", this.count(entry.transaction_count)));
+            label.appendChild(this.node("span", "count-short", `${entry.transaction_count.toLocaleString("en-IN")} txn${entry.transaction_count === 1 ? "" : "s"}`));
+            count.appendChild(label);
+            const percentage = this.node("span", "income-percentage");
+            percentage.dataset.format = "percentage";
+            percentage.title = entry.income_percentage == null
+                ? "Percentage unavailable without income for the selected period"
+                : "Percent of income for the selected period";
+            this.amounts.set(percentage, entry.income_percentage ?? null);
+            count.appendChild(percentage);
+        } else count.textContent = this.count(entry.transaction_count);
+        card.appendChild(count);
         card.appendChild(this.amountLines(entry, compact));
         return card;
     }
@@ -91,6 +105,9 @@ class AnalysisView {
             return;
         }
         const { summary } = result;
+        this.document.getElementById("income-note").textContent = summary.income_group
+            ? "Percentages are of income for the selected period."
+            : "Choose your Income main category in Settings to calculate percentages.";
         this.message.hidden = summary.totals.transaction_count !== 0;
         this.message.textContent = "No transactions for this selection.";
         this.summary.hidden = false;

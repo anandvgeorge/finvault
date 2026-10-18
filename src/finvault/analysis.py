@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from finvault.models.category import CategorySettings
 
@@ -60,10 +60,22 @@ def summarize_groups(
         target.add(amount, transaction_type)
         totals.add(amount, transaction_type)
 
+    income_group = settings.resolved_income_group
+    income = groups[income_group].credits if income_group is not None else None
+
+    def percentage(group_id: str, values: _Totals) -> str | None:
+        if income is None or income <= 0:
+            return None
+        amount = values.credits if group_id == income_group else values.debits
+        return str((amount / income * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
     return {
+        "income_group": income_group,
+        "income_total": format(income, "f") if income is not None else None,
         "totals": totals.as_dict(),
         "groups": [
-            {"id": group.id, "label": group.label, **groups[group.id].as_dict()}
+            {"id": group.id, "label": group.label, **groups[group.id].as_dict(),
+             "income_percentage": percentage(group.id, groups[group.id])}
             for group in settings.groups
         ],
         "independent": [

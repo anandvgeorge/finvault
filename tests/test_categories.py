@@ -62,6 +62,7 @@ class CategorySettingsTests(unittest.TestCase):
             groups=(CategoryGroup(id="leisure", label="Example leisure"),
                     CategoryGroup(id="empty", label="Empty group")),
             category_groups={"travel": "leisure"},
+            income_group="leisure",
         )
         self.store.save(settings)
         loaded = self.store.load()
@@ -72,6 +73,7 @@ class CategorySettingsTests(unittest.TestCase):
         renamed["groups"][0]["label"] = "Renamed group"
         self.store.save(CategorySettings.model_validate(renamed))
         self.assertEqual(self.store.load().category_groups, {"travel": "leisure"})
+        self.assertEqual(self.store.load().income_group, "leisure")
         self.assertEqual(self.store.load().categories, settings.categories)
         self.assertEqual(self.store.load().rules, settings.rules)
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
@@ -80,6 +82,7 @@ class CategorySettingsTests(unittest.TestCase):
         base = {"categories": [{"id": "travel", "label": "Travel"}],
                 "groups": [{"id": "leisure", "label": "Leisure"}]}
         variants = (
+            {"income_group": "missing"},
             {"groups": [{"id": "leisure", "label": "One"}, {"id": "leisure", "label": "Two"}]},
             {"groups": [{"id": "one", "label": "Same"}, {"id": "two", "label": "same"}]},
             {"groups": [{"id": "Invalid ID", "label": "Invalid"}]},
