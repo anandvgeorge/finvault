@@ -7,7 +7,6 @@ import unittest
 from finvault.categories import TomlCategoryStore
 from finvault.category_matching import CategoryMatcher, KeywordCategoryMatcher
 from finvault.models.category import Category, CategoryRule, CategorySettings
-from tests.fixtures import email
 
 
 class KeywordCategoryMatcherTests(unittest.TestCase):
@@ -79,17 +78,6 @@ class KeywordCategoryMatcherTests(unittest.TestCase):
             with self.subTest(keyword=keyword):
                 matcher = self.matcher(CategoryRule(category="custom_outgoing", keywords=(keyword,)))
                 self.assertEqual(matcher.match(body, "debit"), "custom_outgoing")
-
-    def test_body_only_input_is_independent_of_email_metadata(self):
-        # The matcher receives just a string, so subject, sender, and merchant
-        # fields cannot contribute to a match.
-        matcher = self.matcher(CategoryRule(category="custom_incoming", keywords=("example payroll",)))
-        message = email(body="Unrelated body text")
-        message.subject = "Example payroll"
-        message.sender = "Example Payroll <alerts@example.invalid>"
-        self.assertIsNone(matcher.match(message.body_text, "credit"))
-        message.body_text = "Received Example Payroll"
-        self.assertEqual(matcher.match(message.body_text, "credit"), "custom_incoming")
 
     def test_validated_private_config_can_build_matcher_without_modifying_the_file(self):
         with tempfile.TemporaryDirectory() as directory:

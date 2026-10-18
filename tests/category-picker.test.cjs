@@ -46,18 +46,23 @@ function picker(selectedIndex = 1) {
     const menu = new GroupedCategoryMenu(document);
     menu.configure(groups, assignments);
     const button = menu.enhance(select);
+    const findById = (node, id) => node.id === id ? node
+        : node.children.map(child => findById(child, id)).find(Boolean);
     return { menu, button, select, groups, assignments, changes, listeners, categoryPickerSections,
+        selectedValue: () => select.options[select.selectedIndex].value,
+        active: () => findById(menu.menu, button.getAttribute("aria-activedescendant")),
         key: (key, extra = {}) => button.onkeydown({ key, preventDefault() {}, ...extra }),
         group: id => menu.rows.find(row => row.kind === "group" && row.section.id === id),
         option: value => menu.rows.find(row => row.kind === "option" && select.options[row.index].value === value),
     };
 }
 
-test("picker sorts leaves alphabetically without changing native indices, IDs or config ordering", () => {
+test("picker sorts leaves alphabetically while preserving values and config ordering", () => {
     const f = picker();
     const before = JSON.stringify({ groups: f.groups, assignments: f.assignments, options: f.select.options });
     const structure = f.categoryPickerSections(f.select.options, f.groups, f.assignments);
-    assert.deepEqual(Array.from(structure.sections[0].options, item => [item.label, item.index]), [["Alpha", 3], ["beta", 2], ["Zoo", 1]]);
+    assert.deepEqual(Array.from(structure.sections[0].options, item => [item.label, f.select.options[item.index].value]),
+        [["Alpha", "alpha"], ["beta", "beta"], ["Zoo", "zoo"]]);
     assert.deepEqual(Array.from(structure.sections.at(-1).options, item => item.label), ["Lend", "Refunds", "Removed (unavailable)"]);
     assert.equal(JSON.stringify({ groups: f.groups, assignments: f.assignments, options: f.select.options }), before);
 });
@@ -78,7 +83,7 @@ test("opening expands the selected category's group; headers only expand or coll
     assert.equal(f.menu.rows.some(row => row.kind === "option" && row.sectionKey), false);
     f.group("empty").display.onclick();
     assert.equal(f.group("empty").node.getAttribute("aria-expanded"), "true");
-    assert.equal(f.select.selectedIndex, 1);
+    assert.equal(f.selectedValue(), "zoo");
     assert.deepEqual(f.changes, []);
     assert.equal(f.menu.menu.hidden, false);
 });
@@ -88,9 +93,9 @@ test("choosing a sorted leaf assigns its real value and closes before change eve
     f.button.onclick();
     f.select.dispatchEvent = event => {
         assert.equal(f.menu.menu.hidden, true);
-        assert.equal(f.menu.button, null);
+        assert.equal(f.button.getAttribute("aria-expanded"), "false");
         assert.equal(event.type, "change");
-        assert.equal(f.select.selectedIndex, 3);
+        assert.equal(f.selectedValue(), "alpha");
     };
     f.option("alpha").node.onclick();
     assert.equal(f.button.textContent, "Alpha");
@@ -119,17 +124,17 @@ test("keyboard navigation expands and collapses headers; Escape, blur and Tab ne
     f.key("ArrowDown"); f.key("ArrowDown"); f.key("Enter");
     assert.equal(f.group("needs").node.getAttribute("aria-expanded"), "true");
     f.key("ArrowRight");
-    assert.equal(f.menu.rows[f.menu.activeIndex].label, "Alpha");
+    assert.equal(f.active().textContent, "Alpha");
     f.key("ArrowLeft"); f.key("ArrowLeft");
     assert.equal(f.group("needs").node.getAttribute("aria-expanded"), "false");
     f.key("ArrowRight"); f.key("ArrowDown"); f.key("Escape");
-    assert.equal(f.select.selectedIndex, 0);
+    assert.equal(f.selectedValue(), "");
     f.key("a"); f.key("Tab");
-    assert.equal(f.select.selectedIndex, 0);
+    assert.equal(f.selectedValue(), "");
     f.button.onclick(); f.group("needs").display.onclick();
     f.option("beta").node.onpointermove({ pointerType: "mouse" });
     f.button.onblur();
-    assert.equal(f.select.selectedIndex, 0);
+    assert.equal(f.selectedValue(), "");
     assert.deepEqual(f.changes, []);
 });
 
@@ -137,7 +142,7 @@ test("typeahead reveals a category in a collapsed group and Enter alone commits 
     const f = picker(0);
     f.key("t");
     assert.equal(f.group("leisure").node.getAttribute("aria-expanded"), "true");
-    assert.equal(f.menu.rows[f.menu.activeIndex].label, "Travel");
+    assert.equal(f.active().textContent, "Travel");
     assert.deepEqual(f.changes, []);
     f.key("Enter");
     assert.deepEqual(f.changes, [["change", "travel"]]);
@@ -150,7 +155,7 @@ test("picker retains trigger width and respects disabled, outside-click and scro
     f.button.setAttribute("aria-disabled", "true"); f.button.onclick(); f.key("Enter");
     assert.equal(f.menu.menu.hidden, true);
     f.button.setAttribute("aria-disabled", "false"); f.button.onclick();
-    assert.equal(f.menu.menu.style.width, "160px");
+    assert.equal(parseFloat(f.menu.menu.style.width), f.button.getBoundingClientRect().width);
     f.listeners.get("scroll")({ target: f.menu.menu });
     assert.equal(f.menu.menu.hidden, false);
     f.listeners.get("pointerdown")({ target: {} });
