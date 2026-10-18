@@ -87,6 +87,7 @@
         .backfill-options { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
         .backfill-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
         .backfill-target { display: flex; gap: 6px; }
+        .backfill-actions { display: flex; gap: 8px; }
         .backfill-month { flex: 1 1 160px; max-width: 200px; }
         .backfill-command { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); }
         .command-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
@@ -195,10 +196,10 @@
                     <div class="add-rule"><button id="add-rule" type="button" class="button">+ Add rule</button></div>
                     <aside class="backfill-help" aria-labelledby="backfill-heading">
                         <h3 id="backfill-heading">Apply rules to existing transactions</h3>
-                        <p class="help">Save your rules first. Copy and run Preview in a terminal, review the results, then run Apply. Only Uncategorized transactions are updated.</p>
+                        <p class="help">Save your rules first. Preview checks for matches; Apply saves them using your current saved rules. Only Uncategorized transactions are updated.</p>
                         <div class="backfill-options">
                             <div>
-                                <span id="backfill-target-label" class="backfill-label">Run on</span>
+                                <span id="backfill-target-label" class="backfill-label">Terminal commands for</span>
                                 <div class="backfill-target" role="group" aria-labelledby="backfill-target-label">
                                     <button type="button" class="button" data-backfill-host="laptop" aria-pressed="true">Laptop</button>
                                     <button type="button" class="button" data-backfill-host="pi" aria-pressed="false">Raspberry Pi</button>
@@ -210,7 +211,12 @@
                             </div>
                         </div>
                         <p id="backfill-location" class="help">Run from your laptop’s project folder.</p>
-                        <p id="backfill-scope" class="help">Leave the month blank to include all months. Choose the machine whose saved rules and data you want to use.</p>
+                        <p id="backfill-scope" class="help">Leave the month blank to include all months. The buttons below use the server hosting this page.</p>
+                        <div id="backfill-actions" class="backfill-actions" aria-label="Run category rules">
+                            <button id="run-backfill-preview" type="button" class="button" disabled>Preview</button>
+                            <button id="run-backfill-apply" type="button" class="button" disabled>Apply</button>
+                        </div>
+                        <p id="backfill-result" class="backfill-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
                         <div class="backfill-command">
                             <div class="command-heading"><span>1. Preview</span><button type="button" class="button" data-copy-command="preview" aria-label="Copy backfill preview command">Copy</button></div>
                             <pre><code id="backfill-preview"></code></pre>
@@ -307,6 +313,80 @@
                 };
             });
             render();
+        }
+
+        async function requestBackfill(action, month) {
+            let response;
+            try {
+                response = await fetch(`/settings/categories/backfill/${action}`, {
+                    method: "POST", cache: "no-store",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ month: month || null }),
+                });
+            } catch {
+                throw new Error(action === "apply"
+                    ? "Connection lost. Apply may have completed; run Preview to check before retrying."
+                    : "Couldn’t reach the server. Try again.");
+            }
+            if (!response.ok) {
+                let detail;
+                try { detail = (await response.json()).detail; } catch {}
+                throw new Error(typeof detail === "string" ? detail : response.status === 422
+                    ? "Choose a valid month, or leave it blank for all months."
+                    : `The server returned an error (${response.status}).`);
+            }
+            try { return await response.json(); }
+            catch { throw new Error("Couldn’t read the result. Run Preview to check before retrying."); }
+        }
+
+        class BackfillSession {
+            constructor(request, onChange) {
+                this.request = request; this.onChange = onChange;
+                this.ready = false; this.busy = false; this.action = null;
+                this.message = ""; this.error = false;
+            }
+
+            async run(action, month = "") {
+                if (this.busy || !this.ready) return;
+                this.error = false;
+                try { backfillCommands("laptop", month); }
+                catch (error) { this.message = error.message; this.error = true; this.onChange(); return; }
+                this.busy = true; this.action = action;
+                const scope = month || "all months";
+                this.message = `${action === "preview" ? "Checking matches" : "Applying categories"} · ${scope}…`;
+                this.onChange();
+                try {
+                    const result = await this.request(action, month);
+                    const counts = `Checked: ${result.considered} · Matches: ${result.matched} · No match: ${result.unmatched} · Missing body: ${result.missing_body} · Unsupported type: ${result.unsupported_type}`;
+                    this.message = action === "preview"
+                        ? `Preview · ${scope} · ${counts}. No changes saved.`
+                        : `Applied · ${scope} · Updated: ${result.updated} · Skipped: ${result.skipped} · ${counts}.`;
+                } catch (error) { this.message = error.message; this.error = true; }
+                finally { this.busy = false; this.action = null; this.onChange(); }
+            }
+        }
+
+        function initializeBrowserBackfill(session) {
+            const month = document.getElementById("backfill-month");
+            const preview = document.getElementById("run-backfill-preview"), apply = document.getElementById("run-backfill-apply");
+            const feedback = document.getElementById("backfill-result"), actions = document.getElementById("backfill-actions");
+            const backfill = new BackfillSession(requestBackfill, refresh);
+            function refresh() {
+                backfill.ready = Boolean(session.draft && !session.draft.dirty && !session.busy);
+                const disabled = !backfill.ready || backfill.busy || !month.checkValidity();
+                preview.disabled = disabled; apply.disabled = disabled;
+                month.disabled = backfill.busy;
+                preview.textContent = backfill.action === "preview" ? "Previewing…" : "Preview";
+                apply.textContent = backfill.action === "apply" ? "Applying…" : "Apply";
+                feedback.textContent = !backfill.busy && session.draft?.dirty ? "Save your rule changes before running Preview or Apply." : backfill.message;
+                feedback.dataset.error = String(backfill.error);
+                actions.setAttribute("aria-busy", String(backfill.busy));
+            }
+            preview.onclick = () => { void backfill.run("preview", month.value); };
+            apply.onclick = () => { void backfill.run("apply", month.value); };
+            month.addEventListener("input", () => { backfill.message = ""; backfill.error = false; refresh(); });
+            refresh();
+            return { refresh };
         }
 
         function statusTime(value) {
@@ -484,6 +564,7 @@
             const retry = document.getElementById("retry-load");
             const ruleMenu = new CategoryMenu(document, { id: "rule-menu", triggerClass: "rule-trigger" });
             const ruleControls = new Map();
+            let browserBackfill;
             const session = new SettingsSession(requestSettings, render => {
                 if (session.busy) ruleMenu.close();
                 if (render) { renderCategories(); renderRules(); }
@@ -498,7 +579,9 @@
                 retry.hidden = session.state !== "error" || Boolean(session.draft);
                 retry.disabled = session.busy;
                 form.setAttribute("aria-busy", String(session.busy));
+                browserBackfill?.refresh();
             });
+            browserBackfill = initializeBrowserBackfill(session);
 
             function button(label, action, className = "") {
                 const element = document.createElement("button");
