@@ -16,7 +16,7 @@ from fastapi import HTTPException
 import finvault.api
 from finvault.categories import TomlCategoryStore
 from finvault.database.database import Database
-from finvault.models.category import Category, CategoryRule, CategorySettings
+from finvault.models.category import Category, CategoryGroup, CategoryRule, CategorySettings
 from tests.fixtures import email, transaction
 
 
@@ -242,6 +242,118 @@ class ApiTests(unittest.TestCase):
         })
         self.assertEqual(self.api.get_transactions(), [])
         self.assertEqual(self.api.get_years(), [])
+
+    def test_analysis_accounts_for_groups_independent_removed_and_uncategorized_without_writes(self):
+        self.category_store.save(CategorySettings(
+            categories=tuple(Category(id=key, label=label) for key, label in (
+                ("housing", "Housing"), ("goods", "Goods"), ("pay", "Pay"),
+                ("lend", "Lend"), ("refunds", "Refunds"), ("unused", "Unused"),
+            )),
+            groups=(CategoryGroup(id="needs", label="Needs"), CategoryGroup(id="earnings", label="Earnings"),
+                    CategoryGroup(id="empty", label="Empty group")),
+            category_groups={"housing": "needs", "goods": "needs", "pay": "earnings"},
+            rules=(CategoryRule(category="pay", keywords=("fictional private keyword",)),),
+        ))
+        for index, (category, kind, amount) in enumerate((
+            ("housing", "debit", "0.10"), ("goods", "debit", "0.20"), ("goods", "credit", "0.07"),
+            ("pay", "credit", "1200.05"), ("pay", "debit", "0.05"), ("lend", "debit", "100.00"),
+            ("refunds", "credit", "10.00"), ("removed", "debit", "30.00"), (None, "debit", "5.00"),
+        )):
+            self.save_transaction(f"fixture-analysis-{index}", category=category,
+                                  transaction_type=kind, amount=Decimal(amount))
+        before = list(self.database.connection.iterdump())
+        config_before = self.category_store.path.read_bytes()
+        status, body = self.request("/analysis/summary")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {
+            "totals": {"total_debits": "135.35", "total_credits": "1210.12", "transaction_count": 9},
+            "groups": [
+                {"id": "needs", "label": "Needs", "total_debits": "0.30", "total_credits": "0.07", "transaction_count": 3},
+                {"id": "earnings", "label": "Earnings", "total_debits": "0.05", "total_credits": "1200.05", "transaction_count": 2},
+                {"id": "empty", "label": "Empty group", "total_debits": "0.00", "total_credits": "0.00", "transaction_count": 0},
+            ],
+            "independent": [
+                {"id": "lend", "label": "Lend", "total_debits": "100.00", "total_credits": "0.00", "transaction_count": 1},
+                {"id": "refunds", "label": "Refunds", "total_debits": "0.00", "total_credits": "10.00", "transaction_count": 1},
+                {"id": "unused", "label": "Unused", "total_debits": "0.00", "total_credits": "0.00", "transaction_count": 0},
+                {"id": "removed", "label": "removed (unavailable)", "total_debits": "30.00", "total_credits": "0.00", "transaction_count": 1},
+            ],
+            "uncategorized": {"total_debits": "5.00", "total_credits": "0.00", "transaction_count": 1},
+        })
+        self.assertEqual(list(self.database.connection.iterdump()), before)
+        self.assertEqual(self.category_store.path.read_bytes(), config_before)
+
+    def test_analysis_uses_current_group_assignments_and_legacy_config_without_rewriting_transactions(self):
+        settings = CategorySettings(
+            categories=(Category(id="custom", label="Custom"),),
+            groups=(CategoryGroup(id="first", label="First"), CategoryGroup(id="second", label="Second")),
+            category_groups={"custom": "first"},
+        )
+        self.category_store.save(settings)
+        self.save_transaction("fixture-group-move", category="custom")
+        before = self.api.get_transactions()
+        self.assertEqual(self.request("/analysis/summary")[1]["groups"][0]["total_debits"], "42.50")
+        updated = settings.model_dump()
+        updated["category_groups"] = {"custom": "second"}
+        updated["groups"][1]["label"] = "Renamed"
+        self.category_store.save(CategorySettings.model_validate(updated))
+        body = self.request("/analysis/summary")[1]
+        self.assertEqual([group["total_debits"] for group in body["groups"]], ["0.00", "42.50"])
+        self.assertEqual(body["groups"][1]["label"], "Renamed")
+        self.category_store.path.write_text('[categories]\ncustom = "Custom"\n')
+        body = self.request("/analysis/summary")[1]
+        self.assertEqual(body["groups"], [])
+        self.assertEqual(body["independent"], [
+            {"id": "custom", "label": "Custom", "total_debits": "42.50", "total_credits": "0.00", "transaction_count": 1},
+        ])
+        self.assertEqual(self.api.get_transactions(), before)
+
+    def test_analysis_period_filters_match_transactions_including_ist_month_boundary(self):
+        self.save_calendar_transactions()
+        self.database.connection.execute("""
+            UPDATE transactions SET category = CASE
+                WHEN transaction_type = 'debit' THEN 'necessary' ELSE 'salary' END
+        """)
+        self.database.connection.commit()
+        self.save_transaction("fixture-analysis-ist", amount=Decimal("0.01"),
+                              transaction_date=datetime.fromisoformat("2001-01-01T00:15:00+05:30"))
+        for parameters in (
+            [], [("years", 1999)], [("years", 2001)],
+            [("years", 2001), ("months", "2001-01"), ("months", "2001-03")],
+            [("years", 2000), ("years", 2002), ("months", "2002-01")],
+            [("years", 2001), ("years", 2002), ("months", "2001-01"), ("months", "2002-12")],
+            [("years", 2001), ("years", 2001), ("months", "2001-01"), ("months", "2001-01")],
+            [("period", "month")], [("period", "year")],
+        ):
+            with self.subTest(parameters=parameters):
+                status, summary = self.request("/analysis/summary", parameters)
+                self.assertEqual(status, 200)
+                rows = self.request("/transactions", parameters)[1]
+                self.assertEqual(summary["totals"]["transaction_count"], len(rows))
+                buckets = summary["groups"] + summary["independent"] + [summary["uncategorized"]]
+                self.assertEqual(sum(bucket["transaction_count"] for bucket in buckets), len(rows))
+                for kind in ("debit", "credit"):
+                    expected = sum((Decimal(row["amount"]) for row in rows if row["transaction_type"] == kind), Decimal(0))
+                    self.assertEqual(Decimal(summary["totals"][f"total_{kind}s"]), expected)
+                    self.assertEqual(sum(Decimal(bucket[f"total_{kind}s"]) for bucket in buckets), expected)
+
+    def test_analysis_empty_database_missing_config_and_invalid_config(self):
+        zero = {"total_debits": "0.00", "total_credits": "0.00", "transaction_count": 0}
+        body = self.request("/analysis/summary")[1]
+        self.assertEqual(body["totals"], zero)
+        self.assertEqual(body["uncategorized"], zero)
+        self.assertEqual([group["id"] for group in body["groups"]],
+                         [group.id for group in self.category_store.load().groups])
+        for entry in body["groups"] + body["independent"]:
+            self.assertEqual({key: entry[key] for key in zero}, zero)
+        self.category_store.path.unlink()
+        self.assertEqual(self.request("/analysis/summary"), (200, {
+            "totals": zero, "groups": [], "independent": [], "uncategorized": zero,
+        }))
+        self.category_store.path.write_text('invalid = "fictional private keyword"\n')
+        status, body = self.request("/analysis/summary")
+        self.assertEqual(status, 503)
+        self.assertNotIn("fictional private keyword", json.dumps(body))
 
     def test_overview_totals_and_period_filters(self):
         # Match SQLite's current UTC date without using any real transaction data.
@@ -547,7 +659,7 @@ class ApiTests(unittest.TestCase):
             [("months", "2001-01")], [("years", 2001), ("months", "2002-01")],
             [("years", 2001), ("months", "2001-13")], [("period", "week")],
         ):
-            for path in ("/overview", "/transactions"):
+            for path in ("/overview", "/transactions", "/analysis/summary"):
                 with self.subTest(path=path, parameters=parameters):
                     status, body = self.request(path, parameters)
                     self.assertEqual(status, 422)
