@@ -65,8 +65,11 @@ Your private settings are saved in `categories.toml`:
 
 The file stays out of Git. Laptop and Pi settings are separate.
 
-To apply saved rules to existing Uncategorized transactions, preview a month.
-On the laptop, run from the project root:
+In Settings, select **Preview**, then **Apply** to categorise existing
+Uncategorized transactions. Leave the month blank for all data, or select a month.
+These buttons use the server hosting the page and keep existing assignments.
+
+Alternatively, use the terminal. On the laptop, run from the project root:
 
 ```bash
 uv run --locked python -m finvault.backfill_categories --month 2026-10

@@ -11,7 +11,7 @@ function settings() {
     const context = vm.createContext({ document: { addEventListener() {} }, fetch: async () => { throw new Error("Unexpected request"); } });
     vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings, statusTime, refreshSystemStatus, backfillCommands, copyCommandText })", context), context };
+    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings, statusTime, refreshSystemStatus, backfillCommands, copyCommandText, requestBackfill, BackfillSession, initializeBrowserBackfill })", context), context };
 }
 
 function fixture() {
@@ -24,6 +24,91 @@ function deferred() {
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
 }
+
+test("browser backfill posts the shared optional month to this server and handles safe errors", async () => {
+    const { context, requestBackfill } = settings();
+    const requests = [];
+    context.fetch = async (url, options) => {
+        requests.push({ url, options });
+        return { ok: true, json: async () => ({ matched: 2 }) };
+    };
+    await requestBackfill("preview", "");
+    await requestBackfill("apply", "2001-02");
+    assert.equal(requests[0].url, "/settings/categories/backfill/preview");
+    assert.equal(requests[1].url, "/settings/categories/backfill/apply");
+    assert.equal(requests[1].options.method, "POST");
+    assert.equal(requests[1].options.cache, "no-store");
+    assert.deepEqual(JSON.parse(requests[0].options.body), { month: null });
+    assert.deepEqual(JSON.parse(requests[1].options.body), { month: "2001-02" });
+    context.fetch = async () => ({ ok: false, status: 503, json: async () => ({ detail: "Could not read or update categories. Try again." }) });
+    await assert.rejects(requestBackfill("apply", ""), /Could not read or update/);
+    context.fetch = async () => ({ ok: false, status: 422, json: async () => ({ detail: [{ input: "fictional private input" }] }) });
+    await assert.rejects(requestBackfill("preview", ""), error => /valid month/.test(error.message) && !error.message.includes("private"));
+    context.fetch = async () => { throw new Error("Synthetic network failure"); };
+    await assert.rejects(requestBackfill("preview", ""), /reach the server/);
+    await assert.rejects(requestBackfill("apply", ""), /may have completed.*Preview/);
+});
+
+test("browser backfill blocks unsaved or duplicate requests and reports preview and apply counts", async () => {
+    const { BackfillSession } = settings();
+    const pending = deferred(), calls = [];
+    const state = new BackfillSession(async (...args) => { calls.push(args); return pending.promise; }, () => {});
+    await state.run("apply");
+    assert.equal(calls.length, 0);
+    state.ready = true;
+    const run = state.run("preview", "2001-02");
+    assert.equal(state.busy, true);
+    assert.match(state.message, /Checking matches.*2001-02/);
+    await state.run("apply");
+    assert.equal(calls.length, 1);
+    pending.resolve({ considered: 5, matched: 2, unmatched: 1, missing_body: 1, unsupported_type: 1 });
+    await run;
+    assert.equal(state.busy, false);
+    assert.match(state.message, /Checked: 5.*Matches: 2.*No match: 1.*Missing body: 1.*Unsupported type: 1.*No changes saved/);
+    state.request = async () => ({ considered: 2, matched: 2, updated: 1, skipped: 1, unmatched: 0, missing_body: 0, unsupported_type: 0 });
+    await state.run("apply");
+    assert.match(state.message, /Applied.*all months.*Updated: 1.*Skipped: 1/);
+    state.request = async () => { throw new Error("Try again."); };
+    await state.run("preview");
+    assert.equal(state.error, true);
+    assert.equal(state.message, "Try again.");
+    assert.equal(state.busy, false);
+    await state.run("preview", "2001-13");
+    assert.match(state.message, /YYYY-MM/);
+});
+
+test("browser buttons share the month field, require saved settings, and recover after failure", async () => {
+    const { context, initializeBrowserBackfill, SettingsDraft } = settings();
+    const elements = Object.fromEntries(["backfill-month", "run-backfill-preview", "run-backfill-apply", "backfill-result", "backfill-actions"].map(id => [id, {
+        dataset: {}, value: "2001-02", disabled: false, textContent: "",
+        setAttribute() {}, checkValidity() { return this.value !== "invalid"; },
+        addEventListener(event, callback) { this[event] = callback; },
+    }]));
+    context.document.getElementById = id => elements[id];
+    const session = { draft: null, busy: false };
+    const view = initializeBrowserBackfill(session);
+    const preview = elements["run-backfill-preview"], apply = elements["run-backfill-apply"], month = elements["backfill-month"];
+    assert.equal(preview.disabled, true);
+    session.draft = new SettingsDraft(fixture()); view.refresh();
+    assert.equal(preview.disabled || apply.disabled, false);
+    session.draft.categories[0].label = "Changed"; view.refresh();
+    assert.equal(apply.disabled, true);
+    assert.match(elements["backfill-result"].textContent, /Save your rule changes/);
+    session.draft = new SettingsDraft(fixture()); view.refresh();
+    const pending = deferred();
+    context.fetch = () => pending.promise;
+    apply.onclick();
+    assert.equal(preview.disabled && apply.disabled && month.disabled, true);
+    assert.equal(apply.textContent, "Applying…");
+    pending.reject(new Error("Synthetic network failure"));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(preview.disabled || apply.disabled || month.disabled, false);
+    assert.match(elements["backfill-result"].textContent, /may have completed/);
+    month.value = "invalid"; month.input();
+    assert.equal(preview.disabled && apply.disabled, true);
+    month.value = ""; month.input();
+    assert.equal(preview.disabled || apply.disabled, false);
+});
 
 test("backfill commands distinguish preview from apply and support an optional month", () => {
     const { backfillCommands } = settings();

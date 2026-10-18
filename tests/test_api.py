@@ -1,4 +1,4 @@
-"""API checks with synthetic, in-memory data and no network or real database."""
+"""API checks with synthetic, temporary data and no network or real database."""
 
 import asyncio
 import importlib.util
@@ -16,20 +16,21 @@ from fastapi import HTTPException
 import finvault.api
 from finvault.categories import TomlCategoryStore
 from finvault.database.database import Database
+from finvault.models.category import Category, CategoryRule, CategorySettings
 from tests.fixtures import email, transaction
 
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
-        self.database = Database(":memory:")
-        self.addCleanup(self.database.close)
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
+        self.database = Database(str(Path(directory.name) / "test.db"))
+        self.addCleanup(self.database.close)
         self.category_store = TomlCategoryStore(Path(directory.name) / "categories.toml")
         example = Path(__file__).resolve().parents[1] / "categories.example.toml"
         self.category_store.save(TomlCategoryStore(example).load())
         # The module opens a database at import time. Load an isolated instance
-        # while substituting our in-memory DB, so real data is never opened.
+        # while substituting our temporary DB, so real data is never opened.
         path = Path(finvault.api.__file__).with_name("main.py")
         spec = importlib.util.spec_from_file_location("finvault_api_fixture", path)
         module = importlib.util.module_from_spec(spec)
@@ -100,6 +101,87 @@ class ApiTests(unittest.TestCase):
             return status, json.loads(response_body) if json_response else response_body.decode()
 
         return asyncio.run(run())
+
+    def backfill_fixture(self):
+        self.category_store.save(CategorySettings(
+            categories=(Category(id="custom", label="Custom"),),
+            rules=(CategoryRule(category="custom", keywords=("synthetic",), transaction_type="debit"),),
+        ))
+        self.save_transaction("fixture-match", transaction_date=datetime(2001, 1, 2))
+        self.save_transaction("fixture-next-month", transaction_date=datetime(2001, 2, 2))
+        self.save_transaction("fixture-assigned", category="custom")
+        self.save_transaction("fixture-no-match", transaction_type="credit")
+        self.save_transaction("fixture-empty")
+        self.database.connection.execute("UPDATE emails SET body_text = '' WHERE gmail_id = 'fixture-empty'")
+        self.database.connection.commit()
+
+    def test_browser_backfill_preview_is_read_only_and_month_is_optional(self):
+        self.backfill_fixture()
+        before = list(self.database.connection.iterdump())
+        status, body = self.request("/settings/categories/backfill/preview", method="POST", body={})
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {
+            "month": None, "considered": 4, "matched": 2, "unmatched": 1,
+            "missing_body": 1, "unsupported_type": 0, "updated": None, "skipped": 0,
+        })
+        status, body = self.request("/settings/categories/backfill/preview", method="POST", body={"month": "2001-01"})
+        self.assertEqual(status, 200)
+        self.assertEqual((body["considered"], body["matched"]), (3, 1))
+        self.assertEqual(list(self.database.connection.iterdump()), before)
+
+    def test_browser_backfill_applies_current_saved_rules_and_preserves_other_fields(self):
+        self.backfill_fixture()
+        before = self.api.get_transactions()
+        # Apply uses the latest saved rules, rather than an earlier preview.
+        self.request("/settings/categories/backfill/preview", method="POST", body={})
+        self.category_store.save(CategorySettings(
+            categories=(Category(id="new", label="New"),),
+            rules=(CategoryRule(category="new", keywords=("synthetic",), transaction_type="debit"),),
+        ))
+        status, body = self.request("/settings/categories/backfill/apply", method="POST", body={"month": "2001-01"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["updated"], 1)
+        after = self.api.get_transactions()
+        self.assertEqual([{k: v for k, v in row.items() if k != "category"} for row in before],
+                         [{k: v for k, v in row.items() if k != "category"} for row in after])
+        categories = {row["id"]: row["category"] for row in after}
+        self.assertEqual(categories, {1: "new", 2: None, 3: "custom", 4: None, 5: None})
+        status, body = self.request("/settings/categories/backfill/apply", method="POST", body={})
+        self.assertEqual(body["updated"], 1)
+        status, body = self.request("/settings/categories/backfill/apply", method="POST", body={})
+        self.assertEqual(body["updated"], 0)
+
+    def test_browser_backfill_rejects_bad_input_and_get_cannot_apply(self):
+        for body in ({"month": "0000-01"}, {"month": "2001-13"}, {"month": "2001-2"},
+                     {"month": "2001-01' OR 1=1 --"}, {"month": ""}, {"database": "other.db"}):
+            with self.subTest(body=body):
+                self.assertEqual(self.request("/settings/categories/backfill/apply", method="POST", body=body)[0], 422)
+        self.assertEqual(self.request("/settings/categories/backfill/unknown", method="POST", body={})[0], 422)
+        self.assertEqual(self.request("/settings/categories/backfill/apply")[0], 405)
+
+    def test_browser_backfill_database_failure_rolls_back_and_hides_details(self):
+        self.backfill_fixture()
+        self.database.connection.execute("""
+            CREATE TRIGGER reject_test_update BEFORE UPDATE OF category ON transactions
+            WHEN NEW.id = 2 BEGIN SELECT RAISE(ABORT, 'fictional private database detail'); END
+        """)
+        self.database.connection.commit()
+        status, body = self.request("/settings/categories/backfill/apply", method="POST", body={})
+        self.assertEqual(status, 503)
+        self.assertEqual(body, {"detail": "Could not read or update categories. Try again."})
+        self.assertIsNone(self.database.connection.execute("SELECT category FROM transactions WHERE id = 1").fetchone()[0])
+
+    def test_browser_backfill_uses_sanitized_config_errors_and_refuses_missing_database(self):
+        self.category_store.path.write_text("not valid TOML")
+        status, body = self.request("/settings/categories/backfill/preview", method="POST", body={})
+        self.assertEqual(status, 503)
+        self.assertNotIn("not valid TOML", body["detail"])
+        self.category_store.save(CategorySettings(categories=()))
+        missing = self.database.db_path.with_name("missing.db")
+        with patch.object(self.database, "db_path", missing):
+            for action in ("preview", "apply"):
+                self.assertEqual(self.request(f"/settings/categories/backfill/{action}", method="POST", body={})[0], 503)
+        self.assertFalse(missing.exists())
 
     def test_dashboard_points_to_existing_html(self):
         response = self.api.dashboard()
