@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 from typing import Annotated, Literal
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, HTTPException, Path as PathParameter, Response
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -130,7 +130,7 @@ def settings_page():
 
 @app.get("/analysis")
 def analysis_page():
-    return FileResponse(Path(__file__).parent / "static" / "analysis.html")
+    return RedirectResponse("/#analysis-heading")
 
 
 @app.get("/years")

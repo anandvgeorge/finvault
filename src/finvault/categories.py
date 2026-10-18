@@ -39,7 +39,7 @@ class TomlCategoryStore:
             except (OSError, ValueError) as error:
                 raise CategoryConfigError("Could not read category settings; check categories.toml") from error
             try:
-                if set(data) - {"categories", "rules", "groups", "category_groups"}:
+                if set(data) - {"categories", "rules", "groups", "category_groups", "income_group"}:
                     raise ValueError("Unknown settings fields")
                 catalog = data.get("categories", {})
                 groups = data.get("groups", {})
@@ -50,12 +50,14 @@ class TomlCategoryStore:
                     rules=data.get("rules", ()),
                     groups=tuple(CategoryGroup(id=key, label=label) for key, label in groups.items()),
                     category_groups=data.get("category_groups", {}),
+                    income_group=data.get("income_group"),
                 )
             except (ValidationError, ValueError, TypeError) as error:
                 raise CategoryConfigError("Invalid category settings; check categories.toml") from error
 
     def save(self, settings: CategorySettings) -> None:
         data = {
+            **({"income_group": settings.income_group} if settings.income_group is not None else {}),
             "categories": {category.id: category.label for category in settings.categories},
             "rules": [rule.model_dump(mode="json", exclude_none=True) for rule in settings.rules],
             "groups": {group.id: group.label for group in settings.groups},

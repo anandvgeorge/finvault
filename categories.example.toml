@@ -2,6 +2,9 @@
 # Pi working directory: ~/.local/share/finvault
 # IDs are stored in SQLite. Keep IDs stable when changing display labels.
 
+# Select the main category whose credits count as income for analysis.
+income_group = "income"
+
 [categories]
 necessary = "Necessary"
 lifestyle = "Lifestyle"

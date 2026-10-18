@@ -35,6 +35,14 @@ class CategorySettings(BaseModel):
     rules: tuple[CategoryRule, ...] = Field(default=(), max_length=1000)
     groups: tuple[CategoryGroup, ...] = Field(default=(), max_length=500)
     category_groups: dict[CategoryId, CategoryId] = Field(default_factory=dict, max_length=500)
+    income_group: CategoryId | None = None
+
+    @property
+    def resolved_income_group(self) -> str | None:
+        """Use an explicit selection, or the existing main category named Income."""
+        if self.income_group is not None:
+            return self.income_group
+        return next((group.id for group in self.groups if group.label.casefold() == "income"), None)
 
     @model_validator(mode="after")
     def validate_catalog(self) -> Self:
@@ -50,6 +58,8 @@ class CategorySettings(BaseModel):
             raise ValueError("Main category IDs must be unique")
         if len({group.label.casefold() for group in self.groups}) != len(self.groups):
             raise ValueError("Main category labels must be unique")
+        if self.income_group is not None and self.income_group not in group_ids:
+            raise ValueError("Income group must reference a configured main category")
         if any(category not in ids or group not in group_ids
                for category, group in self.category_groups.items()):
             raise ValueError("Every group assignment must reference a configured category and main category")

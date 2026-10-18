@@ -558,14 +558,16 @@ test("months cannot select a collapsed year or a year absent from the database",
     assert.equal(current.query(), "years=2025");
 });
 
-test("cards and rows use identical filters and are published only after both finish", async () => {
+test("overview, category cards and rows share filters and publish together", async () => {
     const { DashboardLoader } = dashboard();
     const calls = [];
     const states = [];
     const transactions = deferred();
     const loader = new DashboardLoader(async (url, signal) => {
         calls.push({ url, signal });
-        return url.startsWith("/overview") ? { total_debits: 42 } : transactions.promise;
+        if (url.startsWith("/overview")) return { total_debits: 42 };
+        if (url.startsWith("/analysis/summary")) return { groups: [] };
+        return transactions.promise;
     }, state => states.push(state));
     const current = selection();
     current.toggleYear(2025);
@@ -575,19 +577,22 @@ test("cards and rows use identical filters and are published only after both fin
     assert.equal(states[0].status, "loading");
     assert.equal(calls[0].url.split("?")[1], calls[1].url.split("?")[1]);
     assert.equal(calls[0].signal, calls[1].signal);
+    assert.equal(calls[0].url.split("?")[1], calls[2].url.split("?")[1]);
+    assert.equal(calls[0].signal, calls[2].signal);
     transactions.resolve([{ merchant: "Example Merchant" }]);
     await pending;
     assert.equal(states.length, 2);
     assert.equal(states[1].overview.total_debits, 42);
     assert.equal(states[1].transactions[0].merchant, "Example Merchant");
+    assert.equal(states[1].summary.groups.length, 0);
 });
 
-test("all-time requests omit selection filters on both endpoints", async () => {
+test("all-time requests omit selection filters on every endpoint", async () => {
     const { DashboardLoader } = dashboard();
     const calls = [];
     const loader = new DashboardLoader(async url => { calls.push(url); return []; }, () => {});
     await loader.load("");
-    assert.deepEqual(calls, ["/overview", "/transactions"]);
+    assert.deepEqual(calls, ["/overview", "/transactions", "/analysis/summary"]);
 });
 
 test("a slow earlier response cannot replace a newer selection", async () => {
@@ -602,11 +607,13 @@ test("a slow earlier response cannot replace a newer selection", async () => {
     const older = loader.load("years=2024");
     const newer = loader.load("years=2025");
     assert.equal(requests[0].signal.aborted, true);
-    requests[2].resolve({ total_debits: 25 });
-    requests[3].resolve([]);
+    requests[3].resolve({ total_debits: 25 });
+    requests[4].resolve([]);
+    requests[5].resolve({ groups: [] });
     await newer;
     requests[0].resolve({ total_debits: 24 });
     requests[1].resolve([]);
+    requests[2].resolve({ groups: [] });
     await older;
     const ready = states.filter(state => state.status === "ready");
     assert.equal(ready.length, 1);
@@ -624,11 +631,13 @@ test("a superseded error cannot clear a newer successful selection", async () =>
     }, state => states.push(state));
     const older = loader.load("years=2024");
     const newer = loader.load("years=2025");
-    requests[2].resolve({ total_debits: 25 });
-    requests[3].resolve([]);
+    requests[3].resolve({ total_debits: 25 });
+    requests[4].resolve([]);
+    requests[5].resolve({ groups: [] });
     await newer;
     requests[0].reject(new Error("Synthetic outdated failure"));
     requests[1].resolve([]);
+    requests[2].resolve({ groups: [] });
     await older;
     assert.equal(states[states.length - 1].status, "ready");
     assert.equal(states.some(state => state.status === "error"), false);

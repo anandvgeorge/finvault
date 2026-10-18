@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from finvault.models.category import CategorySettings
 
@@ -42,6 +42,7 @@ def summarize_groups(
     """
     totals, uncategorized = _Totals(), _Totals()
     groups = {group.id: _Totals() for group in settings.groups}
+    category_totals = {category: _Totals() for category in settings.category_groups}
     labels = {category.id: category.label for category in settings.categories}
     independent = {
         category.id: _Totals() for category in settings.categories
@@ -53,6 +54,7 @@ def summarize_groups(
             target = uncategorized
         elif category in settings.category_groups:
             target = groups[settings.category_groups[category]]
+            category_totals[category].add(amount, transaction_type)
         else:
             if category not in independent:
                 independent[category] = _Totals()
@@ -60,10 +62,28 @@ def summarize_groups(
         target.add(amount, transaction_type)
         totals.add(amount, transaction_type)
 
+    income_group = settings.resolved_income_group
+    income = groups[income_group].credits if income_group is not None else None
+
+    def percentage(group_id: str, values: _Totals) -> str | None:
+        if income is None or income <= 0:
+            return None
+        amount = values.credits if group_id == income_group else values.debits
+        return str((amount / income * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
     return {
+        "income_group": income_group,
+        "income_total": format(income, "f") if income is not None else None,
         "totals": totals.as_dict(),
         "groups": [
-            {"id": group.id, "label": group.label, **groups[group.id].as_dict()}
+            {"id": group.id, "label": group.label, **groups[group.id].as_dict(),
+             "income_percentage": percentage(group.id, groups[group.id]),
+             "categories": [
+                 {"id": category.id, "label": category.label, **category_totals[category.id].as_dict(),
+                  "income_percentage": percentage(group.id, category_totals[category.id])}
+                 for category in sorted(settings.categories, key=lambda item: item.label.casefold())
+                 if settings.category_groups.get(category.id) == group.id
+             ]}
             for group in settings.groups
         ],
         "independent": [
