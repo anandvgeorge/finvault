@@ -295,6 +295,111 @@ test("legacy settings have optional groups and group validation prevents invalid
     }
 });
 
+test("category sections include every category once, with empty groups and independent categories", () => {
+    const { SettingsDraft } = settings();
+    const source = fixture();
+    source.categories.push({ id: "lend", label: "Lend" }, { id: "refunds", label: "Refunds" });
+    source.groups = [{ id: "needs", label: "Needs" }, { id: "leisure", label: "Leisure" }];
+    source.category_groups = { travel: "leisure" };
+    const draft = new SettingsDraft(source);
+    const sections = plain(draft.categorySections());
+    assert.deepEqual(sections.map(section => [section.id, section.categories.map(category => category.id)]), [
+        ["needs", []], ["leisure", ["travel"]], [null, ["custom", "lend", "refunds"]],
+    ]);
+    assert.equal(sections.at(-1).label, "Independent categories");
+    assert.equal(draft.dirty, false);
+});
+
+test("main groups and assigned categories can be created without hardcoded group names", () => {
+    const { SettingsDraft } = settings();
+    const draft = new SettingsDraft(fixture());
+    const group = draft.addGroup(" Example needs ");
+    assert.deepEqual(plain(group), { id: "example_needs", label: "Example needs" });
+    const category = draft.addCategory("Example bills", group.id);
+    assert.equal(draft.categoryGroup(category.id), group.id);
+    const independent = draft.addCategory("Refunds");
+    assert.equal(draft.categoryGroup(independent.id), null);
+    for (const name of ["", " ", "EXAMPLE NEEDS", "a".repeat(81)]) {
+        assert.throws(() => draft.addGroup(name));
+    }
+    const before = plain(draft.payload());
+    assert.throws(() => draft.addCategory("New", "missing"), /available main category/);
+    assert.throws(() => draft.moveCategory("missing", group.id), /available category/);
+    assert.throws(() => draft.moveCategory("custom", "missing"), /available main category/);
+    assert.throws(() => draft.removeGroup("missing"), /available main category/);
+    assert.deepEqual(plain(draft.payload()), before);
+    group.label = "Renamed needs";
+    assert.equal(draft.categoryGroup(category.id), "example_needs");
+    assert.equal(draft.validationError(), "");
+});
+
+test("moving categories changes only their group and reversing moves restores a clean draft", () => {
+    const { SettingsDraft } = settings();
+    const source = fixture();
+    source.rules = [{ category: "travel", keywords: ["example journey"], transaction_type: null }];
+    source.groups = [{ id: "first", label: "First" }, { id: "second", label: "Second" }];
+    source.category_groups = { custom: "first", travel: "first" };
+    const draft = new SettingsDraft(source);
+    draft.moveCategory("custom", "second");
+    assert.equal(draft.categoryGroup("custom"), "second");
+    draft.moveCategory("custom", null);
+    assert.equal(draft.categoryGroup("custom"), null);
+    assert.equal(draft.dirty, true);
+    draft.moveCategory("custom", "first");
+    assert.equal(draft.dirty, false);
+    assert.deepEqual(plain(draft.payload().categories), source.categories);
+    assert.deepEqual(plain(draft.payload().rules), source.rules);
+    assert.deepEqual(source.category_groups, { custom: "first", travel: "first" });
+    draft.addCategory("Constructor");
+    assert.equal(draft.categoryGroup("constructor"), null);
+    assert.equal(draft.categorySections().at(-1).categories.at(-1).id, "constructor");
+});
+
+test("removing a main group makes its members independent and preserves their rules", () => {
+    const { SettingsDraft } = settings();
+    const source = fixture();
+    source.groups = [{ id: "needs", label: "Needs" }, { id: "leisure", label: "Leisure" }];
+    source.category_groups = { custom: "needs", travel: "leisure" };
+    source.rules = [{ category: "custom", keywords: ["fictional keyword"], transaction_type: null }];
+    const draft = new SettingsDraft(source);
+    draft.removeGroup("needs");
+    assert.deepEqual(plain(draft.payload().category_groups), { travel: "leisure" });
+    assert.deepEqual(plain(draft.payload().categories), source.categories);
+    assert.deepEqual(plain(draft.payload().rules), source.rules);
+    assert.equal(draft.categoryGroup("custom"), null);
+    assert.equal(draft.validationError(), "");
+});
+
+test("group moves stay local until Save, survive failure, and Discard restores saved grouping", async () => {
+    const { SettingsSession } = settings();
+    let saved = fixture(), fail = false, writes = 0;
+    saved.groups = [{ id: "needs", label: "Needs" }];
+    const session = new SettingsSession(async (method, payload) => {
+        if (method === "GET") return saved;
+        writes++;
+        if (fail) throw new Error("Synthetic save failure");
+        saved = plain(payload); return saved;
+    }, () => {});
+    await session.load();
+    session.draft.moveCategory("custom", "needs"); session.changed();
+    assert.equal(writes, 0);
+    await session.load();
+    assert.equal(session.draft.categoryGroup("custom"), null);
+    session.draft.moveCategory("custom", "needs"); session.changed();
+    fail = true;
+    await session.save();
+    assert.equal(session.draft.categoryGroup("custom"), "needs");
+    assert.equal(session.draft.dirty, true);
+    fail = false;
+    await session.save();
+    assert.deepEqual(saved.category_groups, { custom: "needs" });
+    assert.equal(session.draft.dirty, false);
+    session.draft.removeGroup("needs"); session.changed();
+    await session.load();
+    assert.equal(session.draft.groups[0].id, "needs");
+    assert.equal(session.draft.categoryGroup("custom"), "needs");
+});
+
 test("rule priority changes retain categories, types, keywords and boundary ordering", () => {
     const { SettingsDraft } = settings();
     const source = fixture();
