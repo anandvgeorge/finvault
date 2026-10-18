@@ -65,10 +65,10 @@ Your private settings are saved in `categories.toml`:
 
 The file stays out of Git. Laptop and Pi settings are separate.
 
-In Settings, add main categories to organise categories into sections. Use **↔**
-on a category to move it, then save. Lend and Refunds can stay in **Independent
-categories**. Groups and links are stored in the same private settings file;
-see `categories.example.toml` for an example.
+In Settings, add main categories to organise categories into sections. Drag **↔**
+into another section, or tap it to choose a destination, then save. Lend and
+Refunds can stay in **Independent categories**. Groups and links are stored in
+the same private settings file; see `categories.example.toml` for an example.
 
 In Settings, select **Preview**, then **Apply** to categorise existing
 Uncategorized transactions. Leave the month blank for all data, or select a month.

@@ -211,7 +211,8 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(body, {**self.database.runtime_status(), "commit_id": "a" * 40})
 
     def test_shared_ui_assets_are_served(self):
-        for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu")):
+        for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu"),
+                               ("category-drag.js", "class CategoryDrag")):
             with self.subTest(name=name):
                 status, body = self.request(f"/static/{name}", json_response=False)
                 self.assertEqual(status, 200)

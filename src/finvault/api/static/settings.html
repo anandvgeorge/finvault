@@ -70,12 +70,17 @@
         .group-count { color: var(--muted); font-size: 10px; }
         .group-remove { min-height: 30px; width: 28px; padding: 0; border-color: transparent; font-size: 18px; }
         .category-section .empty { padding: 4px 0; font-size: 11px; }
-        .category-manager { min-height: 0; padding: 3px; margin: -3px; }
+        .category-manager { min-height: 0; padding: 6px; margin: -6px; }
         .category-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; min-height: 0; }
         .category-list .empty { grid-column: 1 / -1; }
         .category-row { display: grid; grid-template-columns: minmax(0, 1fr) 26px 26px; align-items: center; min-width: 0; min-height: 42px; padding: 3px; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); }
         .category-row:hover, .category-row:focus-within { border-color: #777b4f; }
         .category-row.editing { border-color: var(--yellow); }
+        .category-row.is-dragging { opacity: .4; }
+        .category-section.is-drop-target { outline: 2px dashed var(--yellow); outline-offset: 3px; border-radius: 2px; background: #e5c15b0a; }
+        .category-move { cursor: grab; touch-action: none; user-select: none; }
+        .category-dragging, .category-dragging * { cursor: grabbing !important; user-select: none !important; }
+        .category-drag-preview { position: fixed; top: 0; left: 0; z-index: 150; pointer-events: none; max-width: min(240px, calc(100vw - 16px)); padding: 8px 12px; border: 1px solid var(--yellow); border-radius: 3px; background: var(--raised); color: var(--ink); box-shadow: 4px 4px 0 #090c08; font: 12px/1.5 var(--mono); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .category-name { position: relative; display: block; width: 100%; min-width: 0; min-height: 34px; padding: 6px 20px 6px 7px; border: 0; background: transparent; color: var(--ink); font: 12px/1.5 var(--mono); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .category-name::after { content: "✎"; position: absolute; right: 5px; color: var(--yellow); opacity: 0; }
         .category-row:hover .category-name::after, .category-name:focus-visible::after { opacity: 1; }
@@ -200,7 +205,7 @@
                 <div class="settings-columns">
                 <section class="settings-panel categories-panel" aria-labelledby="categories-heading">
                     <div class="panel-heading"><h2 id="categories-heading">Categories</h2></div>
-                    <p class="help">Click a name to rename it. Use ↔ to move a category. Independent categories stay outside main groups.</p>
+                    <p class="help">Click a name to rename it. Drag ↔ into a section, or tap it to choose where to move. Save changes to keep your moves.</p>
                     <div class="category-manager" tabindex="0" aria-label="Category sections and controls">
                     <div id="category-list" class="category-sections"></div>
                     <p id="category-feedback" class="sr-only" role="status" aria-live="polite"></p>
@@ -287,6 +292,7 @@
         <div class="move-cancel"><button id="cancel-category-move" type="button" class="button">Cancel</button></div>
     </dialog>
     <script src="/static/ui.js"></script>
+    <script src="/static/category-drag.js"></script>
     <script id="settings-script">
         "use strict";
 
@@ -682,7 +688,9 @@
             document.getElementById("new-category-group-label").htmlFor = groupTrigger.id;
             const ruleControls = new Map();
             let browserBackfill;
+            let categoryDrag;
             const session = new SettingsSession(requestSettings, render => {
+                if (session.busy || render) categoryDrag?.cancel();
                 if (session.busy) { ruleMenu.close(); groupMenu.close(); moveDialog.close(); }
                 if (render) { moveDialog.close(); renderCategories(); renderRules(); }
                 const dirty = Boolean(session.draft?.dirty);
@@ -699,6 +707,12 @@
                 browserBackfill?.refresh();
             });
             browserBackfill = initializeBrowserBackfill(session);
+            categoryDrag = new CategoryDrag(document, {
+                container: categories, scroller: document.querySelector(".category-manager"),
+                canDrag: () => Boolean(session.draft && !session.busy && !moveDialog.open),
+                onMove: (id, groupId) => moveCategory(id, groupId),
+                announce: message => { document.getElementById("category-feedback").textContent = message; },
+            });
 
             function button(label, action, className = "") {
                 const element = document.createElement("button");
@@ -764,11 +778,7 @@
                 session.draft.categorySections().forEach(section => {
                     const current = section.id === session.draft.categoryGroup(category.id);
                     const destination = button(section.label + (current ? " ✓" : ""), () => {
-                        try {
-                            session.draft.moveCategory(category.id, section.id);
-                            moveDialog.close(); renderCategories(); session.changed(); focusCategory(category.id);
-                            document.getElementById("category-feedback").textContent = `${category.label} moved to ${section.label}. Select Save changes to keep it.`;
-                        } catch (error) { session.error(error.message); }
+                        moveDialog.close(); moveCategory(category.id, section.id);
                     });
                     destination.dataset.groupId = section.id ?? "";
                     destination.setAttribute("aria-pressed", String(current));
@@ -778,7 +788,19 @@
             }
             document.getElementById("cancel-category-move").onclick = () => moveDialog.close();
 
+            function moveCategory(id, groupId) {
+                if (session.busy) return;
+                try {
+                    const category = session.draft.categories.find(category => category.id === id);
+                    const section = session.draft.categorySections().find(section => section.id === groupId);
+                    session.draft.moveCategory(id, groupId);
+                    renderCategories(); session.changed(); focusCategory(id);
+                    document.getElementById("category-feedback").textContent = `${category.label} moved to ${section.label}. Select Save changes to keep it.`;
+                } catch (error) { session.error(error.message); }
+            }
+
             function renderCategories() {
+                categoryDrag?.cancel();
                 categories.replaceChildren();
                 refreshGroupChoices();
                 session.draft.categorySections().forEach(section => {
@@ -823,7 +845,7 @@
                         edit.input.dataset.categoryId = category.id;
                         const move = button("↔", () => openCategoryMove(category), "category-move");
                         move.setAttribute("aria-label", `Move category: ${category.label}`);
-                        move.setAttribute("aria-haspopup", "dialog"); move.setAttribute("aria-controls", moveDialog.id); move.title = "Move category";
+                        move.setAttribute("aria-haspopup", "dialog"); move.setAttribute("aria-controls", moveDialog.id); move.title = "Drag to another section, or click to choose";
                         const remove = button("×", () => {
                             try { session.draft.removeCategory(category.id); renderCategories(); renderRules(); session.changed(); newCategory.focus(); }
                             catch (error) { session.error(error.message); }
