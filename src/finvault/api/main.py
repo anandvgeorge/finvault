@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, HTTPException, Path as PathParameter, Response
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from finvault.analysis import summarize_groups
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
 from finvault.backfill_categories import apply_categories, calendar_month, preview_categories
 from finvault.categories import CategoryConfigError, CategoryStore, TomlCategoryStore
@@ -127,6 +128,11 @@ def settings_page():
     return FileResponse(Path(__file__).parent / "static" / "settings.html")
 
 
+@app.get("/analysis")
+def analysis_page():
+    return FileResponse(Path(__file__).parent / "static" / "analysis.html")
+
+
 @app.get("/years")
 def get_years() -> list[int]:
     """Return years represented by transactions, newest first."""
@@ -193,6 +199,24 @@ def get_overview(
         "upi_debits": row[3] or 0,
         "credit_card_debits": row[4] or 0,
     }
+
+
+@app.get("/analysis/summary")
+def get_analysis_summary(
+    response: Response,
+    period: Period = "all",
+    years: Years = None,
+    months: Months = None,
+):
+    """Group selected transactions using current settings, with exact decimal strings."""
+    response.headers["Cache-Control"] = "no-store"
+    where, parameters = transaction_date_filter(period, years, months)
+    settings = category_settings()
+    cursor = database.connection.execute(
+        f"SELECT category, transaction_type, amount FROM transactions WHERE {where} ORDER BY category",
+        parameters,
+    )
+    return summarize_groups(cursor, settings)
 
 
 @app.get("/transactions")

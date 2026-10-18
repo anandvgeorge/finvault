@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#12140f">
+    <title>Analysis · FinVault</title>
+    <link rel="stylesheet" href="/static/ui.css">
+    <link rel="stylesheet" href="/static/summary-controls.css">
+    <link rel="stylesheet" href="/static/analysis.css">
+</head>
+<body>
+    <header class="page-header">
+        <a href="/" class="brand" aria-label="FinVault dashboard">
+            <span class="brand-mark" aria-hidden="true">F</span>
+            <span><span class="brand-name">FinVault</span><span class="brand-caption">Personal finance</span></span>
+        </a>
+        <nav class="page-nav" aria-label="Main navigation">
+            <a href="/">Dashboard ↗</a>
+            <a href="/settings">Settings ↗</a>
+        </nav>
+    </header>
+    <main>
+        <div class="section-heading">
+            <h1>Analysis</h1>
+            <button type="button" id="toggle-totals" class="visibility-toggle" aria-label="Hide totals" title="Hide totals" aria-controls="analysis-results" data-hidden="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                    <path class="eye-slash" d="M3 3 21 21" />
+                </svg>
+            </button>
+        </div>
+        <p class="intro">Your transactions, grouped using the categories saved in Settings.</p>
+        <section class="period-selector" aria-label="Filter by year and month">
+            <div class="period-toolbar">
+                <button type="button" id="all-periods" class="period-button" aria-pressed="false" disabled>All</button>
+                <button type="button" id="this-month" class="period-button" aria-pressed="false" disabled>This month</button>
+                <p class="period-help">Select years, then months. A year with no months selected includes the full year.</p>
+            </div>
+            <div id="period-years" class="period-years"></div>
+            <div class="period-footer">
+                <p class="selection-label">Showing: <strong id="selection-label">Loading calendar…</strong></p>
+                <p id="data-status" class="data-status" role="status" aria-live="polite">Loading analysis…</p>
+            </div>
+        </section>
+        <button type="button" id="retry" class="period-button retry-button" hidden>Try again</button>
+        <div id="analysis-results" aria-busy="true">
+            <p id="analysis-message" class="empty" role="status">Loading analysis…</p>
+            <section id="selection-summary" class="selection-summary" aria-label="Selected transaction totals" hidden></section>
+            <section aria-labelledby="groups-heading">
+                <h2 id="groups-heading">Main categories</h2>
+                <div id="group-cards" class="analysis-cards"></div>
+            </section>
+            <section id="other-section" aria-labelledby="other-heading" hidden>
+                <h2 id="other-heading">Outside main categories</h2>
+                <p class="help">Independent categories and Uncategorized are included in the selection totals above.</p>
+                <div id="other-cards" class="analysis-cards"></div>
+            </section>
+        </div>
+    </main>
+    <script src="/static/ui.js"></script>
+    <script src="/static/summary-controls.js"></script>
+    <script src="/static/analysis.js"></script>
+</body>
+</html>

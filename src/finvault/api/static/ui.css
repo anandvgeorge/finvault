@@ -1,4 +1,4 @@
-/* Shared header and themed dropdowns for the dashboard and Settings. */
+/* Shared header, controls and themed dropdowns. */
 :root { --header-clearance: 100px; }
 .page-header {
     position: sticky; top: 0; z-index: 20; background: var(--canvas);
@@ -51,11 +51,14 @@
 .category-menu-empty { margin: 0; padding: 8px; color: var(--muted); font: 11px/1.5 var(--mono); }
 @media (max-width: 700px) {
     :root { --header-clearance: 86px; }
-    .page-header { padding-top: 12px; padding-bottom: 18px; margin-bottom: 20px; gap: 12px; }
+    .page-header { padding-top: 12px; padding-bottom: 18px; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
     .brand { gap: 10px; }
     .brand-mark { flex-basis: 34px; width: 34px; height: 36px; font-size: 22px; }
     .brand-name { font-size: 22px; }
     .brand-caption { font-size: 9px; letter-spacing: 1px; }
-    .page-nav { gap: 12px; font-size: 10px; letter-spacing: 0; }
+    .page-nav { gap: 12px; font-size: 10px; letter-spacing: 0; margin-left: auto; }
     .page-nav a[href^="#"] { display: none; }
+}
+@media (max-width: 420px) {
+    :root { --header-clearance: 130px; }
 }
