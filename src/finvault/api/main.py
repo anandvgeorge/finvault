@@ -128,6 +128,11 @@ def settings_page():
     return FileResponse(Path(__file__).parent / "static" / "settings.html")
 
 
+@app.get("/analysis")
+def analysis_page():
+    return FileResponse(Path(__file__).parent / "static" / "analysis.html")
+
+
 @app.get("/years")
 def get_years() -> list[int]:
     """Return years represented by transactions, newest first."""

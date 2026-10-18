@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#12140f">
     <title>FinVault</title>
     <link rel="stylesheet" href="/static/ui.css">
+    <link rel="stylesheet" href="/static/summary-controls.css">
     <style>
         :root {
             color-scheme: dark;
@@ -48,46 +49,6 @@
         .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
         .section-heading h2 { margin: 0; font: 600 18px var(--mono); letter-spacing: -.4px; }
         .section-heading h2::before { content: "/"; color: var(--yellow); margin-right: 10px; }
-        .period-selector {
-            margin: 0 0 24px;
-            padding: 18px 20px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            background: var(--panel);
-            box-shadow: 4px 4px 0 #090c08;
-        }
-        .period-row { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 12px; }
-        .period-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-bottom: 14px; margin-bottom: 12px; border-bottom: 1px dashed var(--border); }
-        .period-toolbar .period-button { white-space: nowrap; }
-        .period-toolbar .period-help { flex: 1 1 300px; margin-left: 8px; }
-        #all-periods { min-width: 74px; }
-        .period-help, .selection-label { margin: 0; color: var(--muted); font: 12px/1.7 var(--mono); }
-        .period-years { display: grid; grid-auto-rows: 40px; gap: 4px; }
-        .period-button {
-            min-height: 40px;
-            padding: 8px 12px;
-            border: 1px solid var(--border);
-            border-radius: 3px;
-            background: #151911;
-            color: #c3cbb7;
-            font: 500 12px/1.4 var(--mono);
-        }
-        .period-button:hover { border-color: #777b4f; background: #2b2e20; color: var(--ink); }
-        .period-button[aria-pressed="true"] { background: var(--yellow); border-color: var(--yellow); color: var(--yellow-ink); font-weight: 700; box-shadow: 2px 2px 0 #080b07; }
-        .year-button { font-weight: 600; width: 100%; }
-        .month-buttons { position: relative; display: flex; align-items: center; gap: 5px; height: 100%; overflow-x: auto; overflow-y: hidden; padding: 0 3px; scrollbar-width: none; }
-        .month-buttons::-webkit-scrollbar { display: none; }
-        .month-buttons[hidden] { display: none; }
-        .month-buttons .period-button { flex: 1 0 44px; padding: 8px 6px; }
-        .month-buttons .period-button:focus-visible { outline-offset: -3px; }
-        .period-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
-        .selection-label, .data-status { height: 3.4em; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-        .selection-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-        .selection-label strong { color: var(--yellow); font-weight: 500; }
-        .data-status { flex: 0 1 auto; max-width: 50%; margin: 0; color: var(--muted); font: 12px/1.7 var(--mono); text-align: right; }
-        .data-status:empty { display: none; }
-        .data-status.error { color: var(--debit); }
-        .retry-button { margin-bottom: 16px; }
         .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
         .card { padding: 20px 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); box-shadow: 3px 3px 0 #090c08; min-width: 0; }
         .card h3 { margin: 0; min-height: 30px; color: var(--muted); font: 500 10px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .8px; }
@@ -101,12 +62,6 @@
         #net-cashflow[data-direction="negative"] { color: var(--debit); }
         #net-cashflow[data-direction="hidden"] { color: var(--ink); }
         .transactions { margin-top: 36px; }
-        .visibility-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel); color: var(--muted); }
-        .visibility-toggle:hover { border-color: var(--yellow); color: var(--yellow); }
-        .visibility-toggle[data-hidden="true"] { color: var(--yellow); background: #2b2b1c; }
-        .visibility-toggle svg { width: 20px; height: 20px; }
-        .visibility-toggle .eye-slash { display: none; }
-        .visibility-toggle[data-hidden="true"] .eye-slash { display: block; }
         .transaction-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 17px; margin: 10px 0 14px; }
         .transaction-count { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font: 11px/1.5 var(--mono); }
         .category-status { margin: 0; flex: 0 0 auto; color: var(--muted); font: 11px/1.5 var(--mono); white-space: nowrap; }
@@ -181,21 +136,11 @@
             h1 { font-size: 22px; }
             .section-heading { margin-bottom: 12px; }
             .section-heading h2 { font-size: 16px; }
-            .period-selector { padding: 12px; margin-bottom: 20px; }
-            .period-toolbar { padding-bottom: 12px; margin-bottom: 10px; }
-            .period-toolbar .period-help { flex-basis: 100%; margin: 4px 0 0; font-size: 11px; }
-            .period-row { grid-template-columns: 58px minmax(0, 1fr); gap: 8px; }
-            .period-years { grid-auto-rows: 44px; gap: 3px; }
-            #all-periods { min-width: 58px; }
-            .period-button { min-height: 44px; padding: 10px 12px; }
-            .month-buttons .period-button { flex: 0 0 44px; padding: 10px 6px; }
-            .selection-label, .data-status { font-size: 11px; }
             .cards { gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .card { padding: 16px 13px; }
             .card h3 { min-height: auto; font-size: 9px; }
             .card p { font-size: clamp(15px, 4.2vw, 23px); margin-top: 12px; letter-spacing: -.6px; }
             .cashflow-card { grid-column: 1 / -1; }
-            .visibility-toggle { width: 44px; height: 44px; }
             .transactions { margin-top: 28px; }
             .transaction-filters { margin: 8px 0; }
             .mobile-sort { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--muted); font: 11px var(--mono); }
@@ -247,6 +192,7 @@
         <nav class="page-nav" aria-label="Main navigation">
             <a href="#overview-heading">Overview</a>
             <a href="#transactions-heading">Transactions</a>
+            <a href="/analysis">Analysis ↗</a>
             <a href="/settings">Settings ↗</a>
         </nav>
     </header>
@@ -326,12 +272,11 @@
         </div>
     </section>
     <script src="/static/ui.js"></script>
+    <script src="/static/summary-controls.js"></script>
     <script src="/static/category-picker.js"></script>
     <script id="dashboard-script">
         "use strict";
 
-        const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         class CategoryCatalog {
             constructor(categories = [], groups = [], categoryGroups = {}) {
                 const valid = values => Array.isArray(values) && !values.some(category =>
@@ -364,61 +309,6 @@
             return new CategoryCatalog(catalog.categories, catalog.groups, catalog.category_groups);
         }
 
-        class PeriodSelection {
-            constructor(years, now = new Date()) {
-                this.years = [...new Set(years)].sort((a, b) => b - a);
-                this.selected = new Map();
-                this.selectThisMonth(now);
-            }
-
-            selectThisMonth(now = new Date()) {
-                if (!this.years.includes(now.getFullYear())) return false;
-                this.selected.clear();
-                this.selected.set(now.getFullYear(), new Set([now.getMonth() + 1]));
-                return true;
-            }
-
-            isThisMonth(now = new Date()) {
-                const months = this.selected.get(now.getFullYear());
-                return this.selected.size === 1 && months?.size === 1 && months.has(now.getMonth() + 1);
-            }
-
-            toggleYear(year) {
-                if (!this.years.includes(year)) return;
-                if (this.selected.has(year)) this.selected.delete(year);
-                else this.selected.set(year, new Set());
-            }
-
-            toggleMonth(year, month) {
-                const months = this.selected.get(year);
-                if (!months || month < 1 || month > 12) return;
-                if (months.has(month)) months.delete(month);
-                else months.add(month);
-            }
-
-            clear() { this.selected.clear(); }
-
-            query() {
-                const parameters = new URLSearchParams();
-                for (const year of this.years) {
-                    if (!this.selected.has(year)) continue;
-                    parameters.append("years", year);
-                    for (const month of [...this.selected.get(year)].sort((a, b) => a - b)) {
-                        parameters.append("months", `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`);
-                    }
-                }
-                return parameters.toString();
-            }
-
-            label() {
-                if (!this.selected.size) return "All time";
-                return this.years.filter(year => this.selected.has(year)).map(year => {
-                    const months = [...this.selected.get(year)].sort((a, b) => a - b);
-                    return `${year}: ${months.length ? months.map(month => MONTHS[month - 1]).join(", ") : "Full year"}`;
-                }).join(" · ");
-            }
-        }
-
         function renderTransactionDate(cell, timestamp) {
             const display = cell.ownerDocument.createElement("time");
             display.dateTime = timestamp;
@@ -434,52 +324,6 @@
                 display.appendChild(time);
             }
             cell.replaceChildren(display);
-        }
-
-        class AmountVisibility {
-            constructor(button, label) {
-                this.button = button;
-                this.label = label;
-                this.visible = true;
-                this.amounts = new Map();
-                button.onclick = () => {
-                    this.visible = !this.visible;
-                    this.updateButton();
-                    for (const [element, amount] of this.amounts) this.render(element, amount);
-                };
-                this.updateButton();
-            }
-
-            updateButton() {
-                const action = `${this.visible ? "Hide" : "Show"} ${this.label}`;
-                this.button.setAttribute("aria-label", action);
-                this.button.title = action;
-                this.button.dataset.hidden = String(!this.visible);
-            }
-
-            set(element, amount) {
-                this.amounts.set(element, amount);
-                this.render(element, amount);
-            }
-
-            clear() { this.amounts.clear(); }
-
-            render(element, amount) {
-                element.replaceChildren();
-                if (element.id === "net-cashflow") {
-                    element.dataset.direction = !this.visible ? "hidden"
-                        : Number(amount) > 0 ? "positive" : Number(amount) < 0 ? "negative" : "neutral";
-                }
-                if (this.visible) {
-                    element.textContent = `₹${Number(amount).toLocaleString("en-IN")}`;
-                } else {
-                    const mask = element.ownerDocument.createElement("span");
-                    mask.textContent = "••••";
-                    mask.setAttribute("role", "img");
-                    mask.setAttribute("aria-label", "Amount hidden");
-                    element.appendChild(mask);
-                }
-            }
         }
 
         async function saveCategory(transactionId, category) {

@@ -14,6 +14,7 @@ function dashboard() {
         fetch: async () => { throw new Error("Unexpected network request"); },
     });
     vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
+    vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/summary-controls.js"), "utf8"), context);
     vm.runInContext(script, context);
     return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryEditor, CategoryCatalog, fetchCategoryCatalog, saveCategory, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
 }

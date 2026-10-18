@@ -195,6 +195,14 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.media_type, "text/html")
         self.assertIn('id="settings-form"', Path(response.path).read_text())
 
+    def test_analysis_page_and_navigation_are_served(self):
+        status, html = self.request("/analysis", json_response=False)
+        self.assertEqual(status, 200)
+        self.assertIn('id="analysis-results"', html)
+        for path in ("/", "/settings"):
+            with self.subTest(path=path):
+                self.assertIn('href="/analysis"', self.request(path, json_response=False)[1])
+
     def test_system_status_reports_only_metadata_and_the_running_commit(self):
         with patch.object(self.api.runtime_info, "commit_id", "a" * 40):
             status, body = self.request("/settings/status")
@@ -213,7 +221,10 @@ class ApiTests(unittest.TestCase):
     def test_shared_ui_assets_are_served(self):
         for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu"),
                                ("category-drag.js", "class CategoryDrag"),
-                               ("category-picker.js", "class GroupedCategoryMenu")):
+                               ("category-picker.js", "class GroupedCategoryMenu"),
+                               ("summary-controls.js", "class PeriodSelection"),
+                               ("summary-controls.css", ".period-selector"),
+                               ("analysis.js", "class AnalysisView"), ("analysis.css", ".analysis-card")):
             with self.subTest(name=name):
                 status, body = self.request(f"/static/{name}", json_response=False)
                 self.assertEqual(status, 200)
