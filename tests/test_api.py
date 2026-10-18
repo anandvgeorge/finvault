@@ -212,11 +212,28 @@ class ApiTests(unittest.TestCase):
 
     def test_shared_ui_assets_are_served(self):
         for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu"),
-                               ("category-drag.js", "class CategoryDrag")):
+                               ("category-drag.js", "class CategoryDrag"),
+                               ("category-picker.js", "class GroupedCategoryMenu")):
             with self.subTest(name=name):
                 status, body = self.request(f"/static/{name}", json_response=False)
                 self.assertEqual(status, 200)
                 self.assertIn(expected, body)
+
+    def test_public_category_catalog_exposes_groups_and_assignments_without_rules(self):
+        settings = self.category_store.load().model_dump(mode="json")
+        settings["rules"] = [{"category": "salary", "transaction_type": "credit", "keywords": ["fictional private keyword"]}]
+        self.category_store.save(CategorySettings.model_validate(settings))
+        expected = {key: settings[key] for key in ("categories", "groups", "category_groups")}
+        self.assertEqual(self.request("/categories/catalog"), (200, expected))
+        self.assertNotIn("fictional private keyword", json.dumps(expected))
+        self.assertEqual(self.request("/categories"), (200, settings["categories"]))
+        settings["category_groups"] = {}
+        self.category_store.save(CategorySettings.model_validate(settings))
+        self.assertEqual(self.request("/categories/catalog")[1]["category_groups"], {})
+        self.category_store.path.write_text('invalid = "fictional private keyword"\n')
+        status, body = self.request("/categories/catalog")
+        self.assertEqual(status, 503)
+        self.assertNotIn("fictional private keyword", json.dumps(body))
 
     def test_empty_database_returns_zero_summary_and_empty_transactions(self):
         self.assertEqual(self.api.get_overview(period="month"), {

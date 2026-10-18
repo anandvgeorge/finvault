@@ -69,6 +69,7 @@ In Settings, add main categories to organise categories into sections. Drag **â†
 into another section, or tap it to choose a destination, then save. Lend and
 Refunds can stay in **Independent categories**. Groups and links are stored in
 the same private settings file; see `categories.example.toml` for an example.
+Category pickers expand one group at a time and list its categories alphabetically.
 
 In Settings, select **Preview**, then **Apply** to categorise existing
 Uncategorized transactions. Leave the month blank for all data, or select a month.

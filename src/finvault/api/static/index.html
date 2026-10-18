@@ -230,6 +230,8 @@
             td.transaction-category { grid-area: category; justify-self: end; width: 100%; max-width: 120px; }
             .transaction-category .category-trigger { width: 100%; min-width: 0; min-height: 32px; padding: 6px 24px 6px 8px; font-size: 11px; background-position: right 7px center; background-size: 12px; }
             .category-option { min-height: 32px; padding: 7px 12px; font-size: 11px; }
+            .category-group-heading { min-height: 32px; padding: 7px 20px 7px 8px; font-size: 11px; }
+            .category-group-heading::after { top: 7px; right: 6px; }
             .category-option[aria-selected="true"]::after { right: 4px; font-size: 10px; }
             tr.message-row { display: block; padding: 24px 16px; background: var(--panel); }
             .table-message { padding: 0; }
@@ -324,20 +326,26 @@
         </div>
     </section>
     <script src="/static/ui.js"></script>
+    <script src="/static/category-picker.js"></script>
     <script id="dashboard-script">
         "use strict";
 
         const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         class CategoryCatalog {
-            constructor(categories = []) {
-                if (!Array.isArray(categories) || categories.some(category =>
+            constructor(categories = [], groups = [], categoryGroups = {}) {
+                const valid = values => Array.isArray(values) && !values.some(category =>
                     !category || typeof category.id !== "string" || !category.id ||
-                    typeof category.label !== "string" || !category.label.trim()) ||
-                    new Set(categories.map(category => category.id)).size !== categories.length) {
+                    typeof category.label !== "string" || !category.label.trim()) &&
+                    new Set(values.map(category => category.id)).size === values.length;
+                if (!valid(categories) || !valid(groups) || !categoryGroups || typeof categoryGroups !== "object" || Array.isArray(categoryGroups)) {
                     throw new Error("Invalid category catalog");
                 }
+                const categoryIds = new Set(categories.map(category => category.id)), groupIds = new Set(groups.map(group => group.id));
+                if (Object.entries(categoryGroups).some(([category, group]) => !categoryIds.has(category) || !groupIds.has(group))) throw new Error("Invalid category catalog");
                 this.categories = categories.map(({ id, label }) => ({ id, label }));
+                this.groups = groups.map(({ id, label }) => ({ id, label }));
+                this.categoryGroups = { ...categoryGroups };
             }
 
             options(selected = null) {
@@ -351,7 +359,9 @@
         }
 
         async function fetchCategoryCatalog() {
-            return new CategoryCatalog(await fetchJSON("/categories"));
+            const catalog = await fetchJSON("/categories/catalog");
+            if (!catalog || !Array.isArray(catalog.categories)) throw new Error("Invalid category catalog");
+            return new CategoryCatalog(catalog.categories, catalog.groups, catalog.category_groups);
         }
 
         class PeriodSelection {
@@ -629,7 +639,7 @@
             const transactionFilters = new TransactionFilters();
             const transactionSort = new TransactionSort();
             const sortButtons = document.querySelectorAll("[data-sort-field]");
-            const categoryMenu = new CategoryMenu(document);
+            const categoryMenu = new GroupedCategoryMenu(document);
             const categoryControls = new Map();
             let categoryCatalog = new CategoryCatalog();
             const categoryEditor = new CategoryEditor(saveCategory, (id, state) => {
@@ -853,6 +863,7 @@
                 try {
                     const [years, catalog] = await Promise.all([fetchJSON("/years"), fetchCategoryCatalog()]);
                     categoryCatalog = catalog;
+                    categoryMenu.configure(catalog.groups, catalog.categoryGroups);
                     selection = new PeriodSelection(years);
                     yearsContainer.replaceChildren();
                     yearRows.clear();

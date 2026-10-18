@@ -60,6 +60,7 @@
         }
         .rule-trigger:hover, .rule-trigger[aria-expanded="true"] { border-color: var(--yellow); }
         #rule-menu .category-option, #group-menu .category-option { min-height: 38px; padding: 8px 22px; line-height: 1.6; }
+        #rule-category-menu .category-option, #rule-category-menu .category-group-heading { min-height: 38px; padding: 8px 22px; line-height: 1.6; }
         label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
         .category-sections { display: grid; gap: 18px; }
         .category-section { min-width: 0; }
@@ -161,6 +162,7 @@
             input, select, textarea { font-size: 16px; }
             .rule-trigger { min-height: 42px; padding: 6px 24px 6px 7px; font: 12px/1.5 var(--mono); background-position: right 7px center; background-size: 12px; }
             #rule-menu .category-option, #group-menu .category-option { min-height: 42px; padding: 12px 22px; font: 12px/1.5 var(--mono); }
+            #rule-category-menu .category-option, #rule-category-menu .category-group-heading { min-height: 42px; padding: 12px 22px; font: 12px/1.5 var(--mono); }
             .keyword-field textarea { padding: 6px 7px; font: 12px/1.5 var(--mono); }
             .button.icon { width: 44px; }
             .category-row { grid-template-columns: minmax(0, 1fr) 28px 28px; }
@@ -292,6 +294,7 @@
         <div class="move-cancel"><button id="cancel-category-move" type="button" class="button">Cancel</button></div>
     </dialog>
     <script src="/static/ui.js"></script>
+    <script src="/static/category-picker.js"></script>
     <script src="/static/category-drag.js"></script>
     <script id="settings-script">
         "use strict";
@@ -682,6 +685,7 @@
             const moveDialog = document.getElementById("move-category-dialog");
             const retry = document.getElementById("retry-load");
             const ruleMenu = new CategoryMenu(document, { id: "rule-menu", triggerClass: "rule-trigger" });
+            const ruleCategoryMenu = new GroupedCategoryMenu(document, { id: "rule-category-menu", triggerClass: "rule-trigger" });
             const groupMenu = new CategoryMenu(document, { id: "group-menu", triggerClass: "rule-trigger" });
             const groupTrigger = groupMenu.enhance(newCategoryGroup);
             groupTrigger.id = "new-category-group-trigger";
@@ -691,7 +695,7 @@
             let categoryDrag;
             const session = new SettingsSession(requestSettings, render => {
                 if (session.busy || render) categoryDrag?.cancel();
-                if (session.busy) { ruleMenu.close(); groupMenu.close(); moveDialog.close(); }
+                if (session.busy) { ruleMenu.close(); ruleCategoryMenu.close(); groupMenu.close(); moveDialog.close(); }
                 if (render) { moveDialog.close(); renderCategories(); renderRules(); }
                 const dirty = Boolean(session.draft?.dirty);
                 fields.disabled = session.busy || !session.draft;
@@ -754,6 +758,7 @@
             }
 
             function refreshGroupChoices(preferred = newCategoryGroup.value) {
+                ruleCategoryMenu.configure(session.draft.groups, session.draft.categoryGroups);
                 groupMenu.close(); newCategoryGroup.replaceChildren();
                 const independent = document.createElement("option");
                 independent.value = ""; independent.textContent = "Independent categories"; newCategoryGroup.appendChild(independent);
@@ -771,7 +776,7 @@
 
             function openCategoryMove(category) {
                 if (session.busy) return;
-                ruleMenu.close(); groupMenu.close();
+                ruleMenu.close(); ruleCategoryMenu.close(); groupMenu.close();
                 document.getElementById("move-category-heading").textContent = `Move ${category.label.trim() || "category"}`;
                 const options = document.getElementById("move-group-options"); options.replaceChildren();
                 let selected;
@@ -868,7 +873,7 @@
             }
 
             function updateRuleChoices() {
-                ruleMenu.close();
+                ruleMenu.close(); ruleCategoryMenu.close();
                 rules.querySelectorAll("select[data-rule-category]").forEach((select, index) => fillChoices(select, session.draft.rules[index].category));
             }
 
@@ -877,14 +882,15 @@
                 control.id = id; caption.htmlFor = id; caption.textContent = label; wrapper.append(caption, control);
                 if (control.tagName === "SELECT") {
                     control.setAttribute("aria-label", menuLabel);
-                    const trigger = ruleMenu.enhance(control); trigger.id = `${id}-trigger`; caption.htmlFor = trigger.id;
+                    const menu = control.hasAttribute("data-rule-category") ? ruleCategoryMenu : ruleMenu;
+                    const trigger = menu.enhance(control); trigger.id = `${id}-trigger`; caption.htmlFor = trigger.id;
                     ruleControls.set(control, trigger);
                 }
                 return wrapper;
             }
 
             function renderRules() {
-                ruleMenu.close(); ruleControls.clear();
+                ruleMenu.close(); ruleCategoryMenu.close(); ruleControls.clear();
                 rules.replaceChildren();
                 if (!session.draft.rules.length) empty(rules, session.draft.categories.length ? "No rules yet. Add one to configure keyword matching." : "Add a category before creating a rule.");
                 session.draft.rules.forEach((rule, index) => {

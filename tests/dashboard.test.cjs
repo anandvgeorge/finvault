@@ -317,17 +317,21 @@ test("category options come only from the supplied catalog and preserve unknown 
 test("catalog fetch loads configured labels and rejects errors without built-in fallback categories", async () => {
     const { fetchCategoryCatalog, CategoryCatalog, context } = dashboard();
     context.fetch = async url => {
-        assert.equal(url, "/categories");
-        return { ok: true, json: async () => [{ id: "transport", label: "Travel" }] };
+        assert.equal(url, "/categories/catalog");
+        return { ok: true, json: async () => ({ categories: [{ id: "transport", label: "Travel" }],
+            groups: [{ id: "leisure", label: "Leisure" }], category_groups: { transport: "leisure" } }) };
     };
     const catalog = await fetchCategoryCatalog();
     assert.equal(catalog.options()[1][1], "Travel");
+    assert.deepEqual(JSON.parse(JSON.stringify(catalog.groups)), [{ id: "leisure", label: "Leisure" }]);
+    assert.deepEqual(JSON.parse(JSON.stringify(catalog.categoryGroups)), { transport: "leisure" });
     context.fetch = async () => ({ ok: false, status: 503 });
     await assert.rejects(fetchCategoryCatalog());
     for (const value of [null, {}, [{ id: "x", label: "" }], [{ id: 1, label: "Example" }],
         [{ id: "x", label: "One" }, { id: "x", label: "Two" }]]) {
         assert.throws(() => new CategoryCatalog(value));
     }
+    assert.throws(() => new CategoryCatalog([{ id: "custom", label: "Custom" }], [], { custom: "missing" }));
 });
 
 test("category saves use PATCH with JSON and null clears a selection", async () => {
