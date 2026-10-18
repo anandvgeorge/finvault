@@ -66,16 +66,22 @@ class CategoryMenu {
         });
         button.setAttribute("aria-expanded", "true");
         this.menu.hidden = false;
+        this.position();
+        this.highlight(select.selectedIndex);
+    }
+
+    position() {
+        const button = this.button;
         const rect = button.getBoundingClientRect();
         const width = Math.min(rect.width, this.view.innerWidth - 16);
+        this.menu.style.width = `${width}px`;
+        this.menu.style.maxHeight = "";
         const below = this.view.innerHeight - rect.bottom - 14;
         const above = rect.top - 14;
         const down = below >= Math.min(this.menu.scrollHeight, 280) || below >= above;
-        this.menu.style.width = `${width}px`;
         this.menu.style.left = `${Math.max(8, Math.min(rect.left, this.view.innerWidth - width - 8))}px`;
         this.menu.style.maxHeight = `${Math.max(0, Math.min(280, down ? below : above))}px`;
         this.menu.style.top = `${down ? rect.bottom + 6 : rect.top - this.menu.getBoundingClientRect().height - 6}px`;
-        this.highlight(select.selectedIndex);
     }
 
     highlight(index) {

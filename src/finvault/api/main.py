@@ -49,6 +49,18 @@ def get_categories():
     return list(category_settings().categories)
 
 
+@app.get("/categories/catalog")
+def get_category_catalog(response: Response):
+    """Category picker structure only; private keyword rules are excluded."""
+    response.headers["Cache-Control"] = "no-store"
+    settings = category_settings()
+    return {
+        "categories": settings.categories,
+        "groups": settings.groups,
+        "category_groups": settings.category_groups,
+    }
+
+
 @app.get("/settings/categories", response_model=CategorySettings)
 def get_category_settings():
     return category_settings()

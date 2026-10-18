@@ -10,7 +10,7 @@ from unittest.mock import patch
 from pydantic import ValidationError
 
 from finvault.categories import CategoryConfigError, TomlCategoryStore
-from finvault.models.category import Category, CategoryRule, CategorySettings
+from finvault.models.category import Category, CategoryGroup, CategoryRule, CategorySettings
 
 
 class CategorySettingsTests(unittest.TestCase):
@@ -44,6 +44,70 @@ class CategorySettingsTests(unittest.TestCase):
         self.store.save(self.settings("Before"))
         self.path.write_text('[categories]\ntransport = "Travel"\n')
         self.assertEqual(self.store.load().categories, (Category(id="transport", label="Travel"),))
+
+    def test_legacy_file_has_independent_categories_and_is_not_rewritten_on_load(self):
+        self.path.parent.mkdir()
+        original = '[categories]\ntravel = "Travel"\nlend = "Lend"\n'
+        self.path.write_text(original)
+        settings = self.store.load()
+        self.assertEqual(settings.groups, ())
+        self.assertEqual(settings.category_groups, {})
+        self.assertEqual(self.path.read_text(), original)
+
+    def test_groups_round_trip_with_optional_assignments_and_stable_category_ids(self):
+        settings = CategorySettings(
+            categories=(Category(id="travel", label="Travel"), Category(id="lend", label="Lend"),
+                        Category(id="refunds", label="Refunds")),
+            rules=(CategoryRule(category="travel", keywords=("example trip",)),),
+            groups=(CategoryGroup(id="leisure", label="Example leisure"),
+                    CategoryGroup(id="empty", label="Empty group")),
+            category_groups={"travel": "leisure"},
+        )
+        self.store.save(settings)
+        loaded = self.store.load()
+        self.assertEqual(loaded, settings)
+        self.assertNotIn("lend", loaded.category_groups)
+        self.assertNotIn("refunds", loaded.category_groups)
+        renamed = loaded.model_dump()
+        renamed["groups"][0]["label"] = "Renamed group"
+        self.store.save(CategorySettings.model_validate(renamed))
+        self.assertEqual(self.store.load().category_groups, {"travel": "leisure"})
+        self.assertEqual(self.store.load().categories, settings.categories)
+        self.assertEqual(self.store.load().rules, settings.rules)
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
+
+    def test_group_validation_rejects_ambiguous_or_dangling_assignments(self):
+        base = {"categories": [{"id": "travel", "label": "Travel"}],
+                "groups": [{"id": "leisure", "label": "Leisure"}]}
+        variants = (
+            {"groups": [{"id": "leisure", "label": "One"}, {"id": "leisure", "label": "Two"}]},
+            {"groups": [{"id": "one", "label": "Same"}, {"id": "two", "label": "same"}]},
+            {"groups": [{"id": "Invalid ID", "label": "Invalid"}]},
+            {"groups": [{"id": "leisure", "label": ""}]},
+            {"groups": [{"id": "leisure", "label": "Leisure", "parent": "other"}]},
+            {"category_groups": {"missing": "leisure"}},
+            {"category_groups": {"travel": "missing"}},
+            {"category_groups": {"travel": ["leisure", "other"]}},
+            {"category_groups": {"travel": None}},
+        )
+        for variant in variants:
+            with self.subTest(variant=variant), self.assertRaises(ValidationError):
+                CategorySettings.model_validate({**base, **variant})
+
+    def test_invalid_group_tables_return_sanitized_errors(self):
+        self.path.parent.mkdir()
+        for extra in (
+            'groups = []\n',
+            'category_groups = []\n',
+            '[groups]\none = "Same"\ntwo = "same"\n',
+            '[category_groups]\ncustom = "fictional_private_group"\n',
+            '[groups]\ncustom = "Group"\n[category_groups]\nmissing = "custom"\n',
+        ):
+            with self.subTest(extra=extra):
+                self.path.write_text(extra + '\n[categories]\ncustom = "Custom"\n')
+                with self.assertRaises(CategoryConfigError) as caught:
+                    self.store.load()
+                self.assertEqual(str(caught.exception), "Invalid category settings; check categories.toml")
 
     def test_default_path_is_working_directory_and_environment_can_override_it(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -110,6 +174,10 @@ class CategorySettingsTests(unittest.TestCase):
         settings = TomlCategoryStore(example).load()
         self.assertTrue(settings.categories)
         self.assertEqual(settings.rules, ())
+        self.assertEqual({group.label for group in settings.groups},
+                         {"Necessary", "Lifestyle", "Investments", "Income"})
+        self.assertNotIn("lend", settings.category_groups)
+        self.assertNotIn("refunds", settings.category_groups)
 
 
 if __name__ == "__main__":

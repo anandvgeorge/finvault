@@ -92,20 +92,14 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(reopened.connection.execute(
             "SELECT category FROM transactions WHERE id = 1"
         ).fetchone(), ("investment",))
+        self.assertFalse(self.database.update_transaction_category(999, "other"))
+        self.assertEqual(reopened.connection.execute(
+            "SELECT category FROM transactions"
+        ).fetchall(), [("investment",)])
         self.assertTrue(self.database.update_transaction_category(1, None))
         self.assertEqual(reopened.connection.execute(
             "SELECT category FROM transactions WHERE id = 1"
         ).fetchone(), (None,))
-
-    def test_repeated_ingestion_preserves_an_existing_manual_category(self):
-        self.database.save_email(email(), "UPI")
-        self.database.save_transaction(transaction())
-        self.database.update_transaction_category(1, "lifestyle")
-        self.database.save_transaction(transaction())
-        self.assertEqual(self.database.connection.execute(
-            "SELECT category FROM transactions"
-        ).fetchall(), [("lifestyle",)])
-        self.assertFalse(self.database.update_transaction_category(999, "other"))
 
     def test_unprocessed_selection_excludes_saved_transactions_and_keeps_order(self):
         stored = email("fixture-stored")

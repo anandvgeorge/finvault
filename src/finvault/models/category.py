@@ -16,6 +16,10 @@ class Category(BaseModel):
     label: Label
 
 
+class CategoryGroup(Category):
+    """A configurable main category used to group existing category IDs."""
+
+
 class CategoryRule(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -29,6 +33,8 @@ class CategorySettings(BaseModel):
 
     categories: tuple[Category, ...] = Field(max_length=500)
     rules: tuple[CategoryRule, ...] = Field(default=(), max_length=1000)
+    groups: tuple[CategoryGroup, ...] = Field(default=(), max_length=500)
+    category_groups: dict[CategoryId, CategoryId] = Field(default_factory=dict, max_length=500)
 
     @model_validator(mode="after")
     def validate_catalog(self) -> Self:
@@ -39,4 +45,12 @@ class CategorySettings(BaseModel):
             raise ValueError("Category labels must be unique")
         if any(rule.category not in ids for rule in self.rules):
             raise ValueError("Every rule must reference a configured category")
+        group_ids = {group.id for group in self.groups}
+        if len(group_ids) != len(self.groups):
+            raise ValueError("Main category IDs must be unique")
+        if len({group.label.casefold() for group in self.groups}) != len(self.groups):
+            raise ValueError("Main category labels must be unique")
+        if any(category not in ids or group not in group_ids
+               for category, group in self.category_groups.items()):
+            raise ValueError("Every group assignment must reference a configured category and main category")
         return self

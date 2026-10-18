@@ -59,22 +59,50 @@
             font: 12px/1.6 var(--mono); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .rule-trigger:hover, .rule-trigger[aria-expanded="true"] { border-color: var(--yellow); }
-        #rule-menu .category-option { min-height: 38px; padding: 8px 22px; line-height: 1.6; }
+        #rule-menu .category-option, #group-menu .category-option { min-height: 38px; padding: 8px 22px; line-height: 1.6; }
+        #rule-category-menu .category-option, #rule-category-menu .category-group-heading { min-height: 38px; padding: 8px 22px; line-height: 1.6; }
         label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+        .category-sections { display: grid; gap: 18px; }
+        .category-section { min-width: 0; }
+        .group-heading { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; }
+        .group-title { flex: 1; min-width: 0; margin: 0; color: var(--yellow); font: 500 12px/1.5 var(--mono); }
+        .group-name { justify-content: flex-start; width: 100%; min-width: 0; min-height: 30px; padding: 5px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+        .group-name:hover { text-decoration: underline; text-underline-offset: 4px; }
+        .group-count { color: var(--muted); font-size: 10px; }
+        .group-remove { min-height: 30px; width: 28px; padding: 0; border-color: transparent; font-size: 18px; }
+        .category-section .empty { padding: 4px 0; font-size: 11px; }
+        .category-manager { min-height: 0; padding: 6px; margin: -6px; }
         .category-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; min-height: 0; }
         .category-list .empty { grid-column: 1 / -1; }
-        .category-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; align-items: center; min-width: 0; min-height: 42px; padding: 3px; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); }
+        .category-row { display: grid; grid-template-columns: minmax(0, 1fr) 26px 26px; align-items: center; min-width: 0; min-height: 42px; padding: 3px; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); }
         .category-row:hover, .category-row:focus-within { border-color: #777b4f; }
         .category-row.editing { border-color: var(--yellow); }
+        .category-row.is-dragging { opacity: .4; }
+        .category-section.is-drop-target { outline: 2px dashed var(--yellow); outline-offset: 3px; border-radius: 2px; background: #e5c15b0a; }
+        .category-move { cursor: grab; touch-action: none; user-select: none; }
+        .category-dragging, .category-dragging * { cursor: grabbing !important; user-select: none !important; }
+        .category-drag-preview { position: fixed; top: 0; left: 0; z-index: 150; pointer-events: none; max-width: min(240px, calc(100vw - 16px)); padding: 8px 12px; border: 1px solid var(--yellow); border-radius: 3px; background: var(--raised); color: var(--ink); box-shadow: 4px 4px 0 #090c08; font: 12px/1.5 var(--mono); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .category-name { position: relative; display: block; width: 100%; min-width: 0; min-height: 34px; padding: 6px 20px 6px 7px; border: 0; background: transparent; color: var(--ink); font: 12px/1.5 var(--mono); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .category-name::after { content: "✎"; position: absolute; right: 5px; color: var(--yellow); opacity: 0; }
         .category-row:hover .category-name::after, .category-name:focus-visible::after { opacity: 1; }
         .category-name:focus-visible, .category-row .remove:focus-visible { outline-offset: -2px; }
         .category-row input { min-height: 34px; padding: 6px 7px; border: 0; background: transparent; }
         .category-row input:focus-visible { outline: 0; }
-        .category-row .remove { width: 30px; min-height: 32px; padding: 0; border: 0; background: transparent; font-size: 20px; }
-        .add-category { display: flex; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
-        .add-category input { flex: 1; }
+        .category-row .remove, .category-move { width: 26px; min-height: 32px; padding: 0; border: 0; background: transparent; font-size: 18px; }
+        .add-category { display: grid; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
+        .add-category .button { justify-self: end; }
+        .add-group { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+        .add-group summary { padding: 6px 0; color: var(--yellow); cursor: pointer; font-size: 12px; }
+        .group-create { display: grid; gap: 8px; margin-top: 10px; }
+        .group-create .button { justify-self: end; }
+        .move-dialog { width: min(360px, calc(100vw - 28px)); max-height: calc(100dvh - 36px); padding: 20px; border: 1px solid var(--yellow); border-radius: 4px; background: var(--panel); color: var(--ink); font: 13px/1.6 var(--mono); box-shadow: 4px 4px 0 #090c08; }
+        .move-dialog::backdrop { background: #080b07c9; }
+        .move-dialog h2 { font-size: 15px; overflow-wrap: anywhere; }
+        .move-dialog .help { margin: 10px 0 14px; }
+        .move-options { display: grid; gap: 8px; }
+        .move-options .button { justify-content: space-between; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+        .move-options .button[aria-pressed="true"] { border-color: var(--yellow); color: var(--yellow); }
+        .move-cancel { display: flex; justify-content: flex-end; margin-top: 16px; }
         .add-rule { display: flex; justify-content: flex-end; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
         .backfill-help { margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
         .backfill-help h3 { margin: 0 0 8px; color: var(--yellow); font-size: 12px; font-weight: 500; }
@@ -113,13 +141,12 @@
         .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
         @media (min-width: 1001px) {
             .settings-columns { grid-template-columns: minmax(0, .35fr) minmax(0, .65fr); }
-            .categories-panel .add-category { flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 14px; }
-            .categories-panel .add-category .button { align-self: flex-end; }
+            .categories-panel .add-category { gap: 8px; margin-top: 14px; padding-top: 14px; }
         }
         @media (min-width: 1001px) and (min-height: 520px) {
             .categories-panel { position: sticky; top: var(--header-clearance); max-height: calc(100dvh - var(--header-clearance) - 100px); display: flex; flex-direction: column; }
-            .categories-panel .panel-heading, .categories-panel .help, .categories-panel .add-category { flex-shrink: 0; }
-            .categories-panel .category-list { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) var(--canvas); scroll-padding-block: 6px; }
+            .categories-panel > .panel-heading, .categories-panel > .help { flex-shrink: 0; }
+            .category-manager { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) var(--canvas); scroll-padding-block: 6px; }
         }
         @media (max-width: 1000px) and (min-width: 701px) {
             body { padding: 24px 24px 48px; }
@@ -134,15 +161,14 @@
             .backfill-help .button { min-height: 44px; padding: 10px 12px; }
             input, select, textarea { font-size: 16px; }
             .rule-trigger { min-height: 42px; padding: 6px 24px 6px 7px; font: 12px/1.5 var(--mono); background-position: right 7px center; background-size: 12px; }
-            #rule-menu .category-option { min-height: 42px; padding: 12px 22px; font: 12px/1.5 var(--mono); }
+            #rule-menu .category-option, #group-menu .category-option { min-height: 42px; padding: 12px 22px; font: 12px/1.5 var(--mono); }
+            #rule-category-menu .category-option, #rule-category-menu .category-group-heading { min-height: 42px; padding: 12px 22px; font: 12px/1.5 var(--mono); }
             .keyword-field textarea { padding: 6px 7px; font: 12px/1.5 var(--mono); }
             .button.icon { width: 44px; }
-            .category-row { grid-template-columns: minmax(0, 1fr) 32px; }
+            .category-row { grid-template-columns: minmax(0, 1fr) 28px 28px; }
             .category-name, .category-row input { min-height: 42px; }
-            .category-row .remove { width: 32px; min-height: 42px; }
-            .add-category { flex-wrap: wrap; }
-            .add-category input { flex-basis: 100%; }
-            .add-category .button { margin-left: auto; }
+            .category-row .remove, .category-move { width: 28px; min-height: 42px; }
+            .group-remove { min-height: 42px; }
             .rule-card { padding: 12px; }
             .rule-heading { flex-wrap: wrap; }
             .rule-actions { margin-left: auto; }
@@ -181,12 +207,32 @@
                 <div class="settings-columns">
                 <section class="settings-panel categories-panel" aria-labelledby="categories-heading">
                     <div class="panel-heading"><h2 id="categories-heading">Categories</h2></div>
-                    <p class="help">Click or tap a name to rename it. Removing a category keeps existing transaction assignments.</p>
-                    <div id="category-list" class="category-list"></div>
+                    <p class="help">Click a name to rename it. Drag ↔ into a section, or tap it to choose where to move. Save changes to keep your moves.</p>
+                    <div class="category-manager" tabindex="0" aria-label="Category sections and controls">
+                    <div id="category-list" class="category-sections"></div>
+                    <p id="category-feedback" class="sr-only" role="status" aria-live="polite"></p>
                     <div class="add-category">
-                        <label for="new-category" class="sr-only">New category name</label>
-                        <input id="new-category" type="text" maxlength="80" placeholder="New category name" autocomplete="off">
+                        <div>
+                            <label for="new-category">New category name</label>
+                            <input id="new-category" type="text" maxlength="80" placeholder="New category name" autocomplete="off">
+                        </div>
+                        <div>
+                            <label id="new-category-group-label" for="new-category-group">Main category</label>
+                            <select id="new-category-group" aria-label="Main category for new category"><option value="">Independent categories</option></select>
+                        </div>
                         <button id="add-category" type="button" class="button">+ Add category</button>
+                    </div>
+                    <details class="add-group">
+                        <summary>+ Add main category</summary>
+                        <div class="group-create">
+                            <div>
+                                <label for="new-group">Main category name</label>
+                                <input id="new-group" type="text" maxlength="80" placeholder="Main category name" autocomplete="off">
+                            </div>
+                            <button id="add-group" type="button" class="button">+ Add main category</button>
+                            <p class="field-help">Removing a main category moves its categories to Independent categories. Removing a category keeps its existing transaction assignments.</p>
+                        </div>
+                    </details>
                     </div>
                 </section>
                 <section class="settings-panel" aria-labelledby="rules-heading">
@@ -241,7 +287,15 @@
         </form>
         <p class="storage-note">Saving updates the private categories.toml file on this server. Comments and formatting aren’t preserved. The repository example is unchanged.</p>
     </main>
+    <dialog id="move-category-dialog" class="move-dialog" aria-labelledby="move-category-heading" aria-describedby="move-category-hint">
+        <h2 id="move-category-heading">Move category</h2>
+        <p id="move-category-hint" class="help">Choose a main category, or keep this category independent. Select Save changes afterwards.</p>
+        <div id="move-group-options" class="move-options"></div>
+        <div class="move-cancel"><button id="cancel-category-move" type="button" class="button">Cancel</button></div>
+    </dialog>
     <script src="/static/ui.js"></script>
+    <script src="/static/category-picker.js"></script>
+    <script src="/static/category-drag.js"></script>
     <script id="settings-script">
         "use strict";
 
@@ -443,12 +497,24 @@
                 if (!settings || !Array.isArray(settings.categories) || !Array.isArray(settings.rules)) throw new Error("Invalid settings response.");
                 this.categories = settings.categories.map(category => ({ id: category.id, label: category.label }));
                 this.rules = settings.rules.map(rule => ({ category: rule.category, keywords: [...rule.keywords], transaction_type: rule.transaction_type ?? null }));
+                if (settings.groups !== undefined && !Array.isArray(settings.groups)) throw new Error("Invalid main categories response.");
+                this.groups = (settings.groups ?? []).map(group => ({ id: group.id, label: group.label }));
+                const links = settings.category_groups === undefined ? {} : settings.category_groups;
+                if (!links || typeof links !== "object" || Array.isArray(links)) throw new Error("Invalid main category assignments response.");
+                this.categoryGroups = { ...links };
                 if (this.validationError()) throw new Error("Invalid settings response.");
                 this.baseline = JSON.stringify(this.snapshot());
             }
 
             snapshot() {
-                return { categories: this.categories.map(category => ({ ...category })), rules: this.rules.map(rule => ({ ...rule, keywords: [...rule.keywords] })) };
+                return {
+                    categories: this.categories.map(category => ({ ...category })),
+                    rules: this.rules.map(rule => ({ ...rule, keywords: [...rule.keywords] })),
+                    groups: this.groups.map(group => ({ ...group })),
+                    category_groups: Object.fromEntries(this.categories
+                        .filter(category => Object.hasOwn(this.categoryGroups, category.id))
+                        .map(category => [category.id, this.categoryGroups[category.id]])),
+                };
             }
 
             get dirty() { return JSON.stringify(this.snapshot()) !== this.baseline; }
@@ -456,23 +522,66 @@
             payload() {
                 const data = this.snapshot();
                 data.categories.forEach(category => { category.label = category.label.trim(); });
+                data.groups.forEach(group => { group.label = group.label.trim(); });
                 data.rules.forEach(rule => { rule.keywords = rule.keywords.map(keyword => keyword.trim()); });
                 return data;
             }
 
-            addCategory(label) {
+            addCategory(label, groupId = null) {
                 label = label.trim();
                 if (!label || label.length > 80) throw new Error("Enter a category name between 1 and 80 characters.");
                 if (this.categories.some(category => category.label.trim().toLowerCase() === label.toLowerCase())) throw new Error("That category name already exists.");
                 if (this.categories.length >= 500) throw new Error("You can have up to 500 categories.");
+                if (groupId !== null && !this.groups.some(group => group.id === groupId)) throw new Error("Choose an available main category.");
                 const category = { id: categoryId(label, new Set(this.categories.map(category => category.id))), label };
                 this.categories.push(category);
+                if (groupId !== null) this.categoryGroups[category.id] = groupId;
                 return category;
             }
 
             removeCategory(id) {
                 if (this.rules.some(rule => rule.category === id)) throw new Error("Choose another category for its rules before removing this category.");
                 this.categories = this.categories.filter(category => category.id !== id);
+                delete this.categoryGroups[id];
+            }
+
+            addGroup(label) {
+                label = label.trim();
+                if (!label || label.length > 80) throw new Error("Enter a main category name between 1 and 80 characters.");
+                if (this.groups.some(group => group.label.trim().toLowerCase() === label.toLowerCase())) throw new Error("That main category name already exists.");
+                if (this.groups.length >= 500) throw new Error("You can have up to 500 main categories.");
+                const group = { id: categoryId(label, new Set(this.groups.map(group => group.id))), label };
+                this.groups.push(group);
+                return group;
+            }
+
+            removeGroup(id) {
+                if (!this.groups.some(group => group.id === id)) throw new Error("Choose an available main category.");
+                this.groups = this.groups.filter(group => group.id !== id);
+                for (const [category, group] of Object.entries(this.categoryGroups)) {
+                    if (group === id) delete this.categoryGroups[category];
+                }
+            }
+
+            categoryGroup(id) {
+                return Object.hasOwn(this.categoryGroups, id) ? this.categoryGroups[id] : null;
+            }
+
+            moveCategory(id, groupId) {
+                if (!this.categories.some(category => category.id === id)) throw new Error("Choose an available category.");
+                if (groupId !== null && !this.groups.some(group => group.id === groupId)) throw new Error("Choose an available main category.");
+                if (groupId === null) delete this.categoryGroups[id];
+                else this.categoryGroups[id] = groupId;
+            }
+
+            categorySections() {
+                const sections = this.groups.map(group => ({ id: group.id, label: group.label, categories: [] }));
+                const independent = { id: null, label: "Independent categories", categories: [] };
+                const byId = new Map(sections.map(section => [section.id, section]));
+                for (const category of this.categories) {
+                    (byId.get(this.categoryGroup(category.id)) ?? independent).categories.push(category);
+                }
+                return [...sections, independent];
             }
 
             addRule() {
@@ -501,6 +610,16 @@
                     if (!ids.has(rule.category)) return `Choose an available category for rule ${index + 1}.`;
                     if (![null, "debit", "credit"].includes(rule.transaction_type)) return `Choose Either, Debit, or Credit for rule ${index + 1}.`;
                     if (!Array.isArray(rule.keywords) || !rule.keywords.length || rule.keywords.length > 100 || rule.keywords.some(keyword => typeof keyword !== "string" || !keyword.trim() || keyword.trim().length > 200)) return `Rule ${index + 1} needs 1–100 keywords, each between 1 and 200 characters.`;
+                }
+                const groupIds = new Set(), groupLabels = new Set();
+                if (this.groups.length > 500 || Object.keys(this.categoryGroups).length > 500) return "There are too many main categories or assignments.";
+                for (const group of this.groups) {
+                    if (typeof group.id !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(group.id) || groupIds.has(group.id)) return "Main categories must have valid, unique IDs.";
+                    if (typeof group.label !== "string" || !group.label.trim() || group.label.trim().length > 80 || groupLabels.has(group.label.trim().toLowerCase())) return "Main categories must have valid, unique names.";
+                    groupIds.add(group.id); groupLabels.add(group.label.trim().toLowerCase());
+                }
+                for (const [category, group] of Object.entries(this.categoryGroups)) {
+                    if (!ids.has(category) || !groupIds.has(group)) return "Main category assignments must use available categories and main categories.";
                 }
                 return "";
             }
@@ -561,13 +680,23 @@
             const categories = document.getElementById("category-list"), rules = document.getElementById("rule-list");
             const status = document.getElementById("save-status"), save = document.getElementById("save"), discard = document.getElementById("discard");
             const newCategory = document.getElementById("new-category"), addCategory = document.getElementById("add-category"), addRule = document.getElementById("add-rule");
+            const newCategoryGroup = document.getElementById("new-category-group");
+            const newGroup = document.getElementById("new-group"), addGroup = document.getElementById("add-group");
+            const moveDialog = document.getElementById("move-category-dialog");
             const retry = document.getElementById("retry-load");
             const ruleMenu = new CategoryMenu(document, { id: "rule-menu", triggerClass: "rule-trigger" });
+            const ruleCategoryMenu = new GroupedCategoryMenu(document, { id: "rule-category-menu", triggerClass: "rule-trigger" });
+            const groupMenu = new CategoryMenu(document, { id: "group-menu", triggerClass: "rule-trigger" });
+            const groupTrigger = groupMenu.enhance(newCategoryGroup);
+            groupTrigger.id = "new-category-group-trigger";
+            document.getElementById("new-category-group-label").htmlFor = groupTrigger.id;
             const ruleControls = new Map();
             let browserBackfill;
+            let categoryDrag;
             const session = new SettingsSession(requestSettings, render => {
-                if (session.busy) ruleMenu.close();
-                if (render) { renderCategories(); renderRules(); }
+                if (session.busy || render) categoryDrag?.cancel();
+                if (session.busy) { ruleMenu.close(); ruleCategoryMenu.close(); groupMenu.close(); moveDialog.close(); }
+                if (render) { moveDialog.close(); renderCategories(); renderRules(); }
                 const dirty = Boolean(session.draft?.dirty);
                 fields.disabled = session.busy || !session.draft;
                 save.disabled = session.busy || !dirty; discard.disabled = session.busy || !dirty;
@@ -582,6 +711,12 @@
                 browserBackfill?.refresh();
             });
             browserBackfill = initializeBrowserBackfill(session);
+            categoryDrag = new CategoryDrag(document, {
+                container: categories, scroller: document.querySelector(".category-manager"),
+                canDrag: () => Boolean(session.draft && !session.busy && !moveDialog.open),
+                onMove: (id, groupId) => moveCategory(id, groupId),
+                announce: message => { document.getElementById("category-feedback").textContent = message; },
+            });
 
             function button(label, action, className = "") {
                 const element = document.createElement("button");
@@ -593,46 +728,137 @@
                 const paragraph = document.createElement("p"); paragraph.className = "empty"; paragraph.textContent = message; container.appendChild(paragraph);
             }
 
+            function editableName(item, className, label, updated) {
+                const input = document.createElement("input");
+                input.type = "text"; input.maxLength = 80; input.value = item.label;
+                input.hidden = true; input.autocomplete = "off"; input.setAttribute("aria-label", `${label} name`);
+                let originalLabel;
+                const name = button(item.label, () => {
+                    originalLabel = item.label; input.value = item.label;
+                    name.hidden = true; input.hidden = false; input.parentElement.classList.add("editing"); input.focus(); input.select();
+                }, className);
+                function updateName() {
+                    const text = item.label.trim() || `Unnamed ${label.toLowerCase()}`;
+                    name.textContent = text; name.title = `Rename ${text}`; name.setAttribute("aria-label", `Rename ${label.toLowerCase()}: ${text}`);
+                }
+                function finishEdit() {
+                    if (input.hidden) return;
+                    item.label = input.value.trim(); input.value = item.label; updateName();
+                    input.hidden = true; name.hidden = false; input.parentElement.classList.remove("editing"); updated();
+                    if (!session.busy) session.changed();
+                }
+                input.oninput = () => { item.label = input.value; updateName(); updated(); session.changed(); };
+                input.onblur = finishEdit;
+                input.onkeydown = event => {
+                    if (event.key === "Enter") { event.preventDefault(); finishEdit(); name.focus(); }
+                    if (event.key === "Escape") { event.preventDefault(); input.value = originalLabel; finishEdit(); name.focus(); }
+                };
+                updateName();
+                return { name, input };
+            }
+
+            function refreshGroupChoices(preferred = newCategoryGroup.value) {
+                ruleCategoryMenu.configure(session.draft.groups, session.draft.categoryGroups);
+                groupMenu.close(); newCategoryGroup.replaceChildren();
+                const independent = document.createElement("option");
+                independent.value = ""; independent.textContent = "Independent categories"; newCategoryGroup.appendChild(independent);
+                session.draft.groups.forEach(group => {
+                    const option = document.createElement("option"); option.value = group.id;
+                    option.textContent = group.label.trim() || "Unnamed main category"; newCategoryGroup.appendChild(option);
+                });
+                newCategoryGroup.value = session.draft.groups.some(group => group.id === preferred) ? preferred : "";
+                groupTrigger.textContent = newCategoryGroup.options[newCategoryGroup.selectedIndex].textContent;
+            }
+
+            function focusCategory(id, selector = ".category-move") {
+                categories.querySelector(`[data-category-row="${id}"] ${selector}`)?.focus();
+            }
+
+            function openCategoryMove(category) {
+                if (session.busy) return;
+                ruleMenu.close(); ruleCategoryMenu.close(); groupMenu.close();
+                document.getElementById("move-category-heading").textContent = `Move ${category.label.trim() || "category"}`;
+                const options = document.getElementById("move-group-options"); options.replaceChildren();
+                let selected;
+                session.draft.categorySections().forEach(section => {
+                    const current = section.id === session.draft.categoryGroup(category.id);
+                    const destination = button(section.label + (current ? " ✓" : ""), () => {
+                        moveDialog.close(); moveCategory(category.id, section.id);
+                    });
+                    destination.dataset.groupId = section.id ?? "";
+                    destination.setAttribute("aria-pressed", String(current));
+                    options.appendChild(destination); if (current) selected = destination;
+                });
+                moveDialog.showModal(); selected?.focus({ preventScroll: true });
+            }
+            document.getElementById("cancel-category-move").onclick = () => moveDialog.close();
+
+            function moveCategory(id, groupId) {
+                if (session.busy) return;
+                try {
+                    const category = session.draft.categories.find(category => category.id === id);
+                    const section = session.draft.categorySections().find(section => section.id === groupId);
+                    session.draft.moveCategory(id, groupId);
+                    renderCategories(); session.changed(); focusCategory(id);
+                    document.getElementById("category-feedback").textContent = `${category.label} moved to ${section.label}. Select Save changes to keep it.`;
+                } catch (error) { session.error(error.message); }
+            }
+
             function renderCategories() {
+                categoryDrag?.cancel();
                 categories.replaceChildren();
-                if (!session.draft.categories.length) empty(categories, "No categories yet. Add your first one below.");
-                session.draft.categories.forEach((category, index) => {
-                    const row = document.createElement("div"); row.className = "category-row";
-                    const input = document.createElement("input"); input.type = "text"; input.maxLength = 80; input.value = category.label; input.dataset.categoryId = category.id;
-                    input.hidden = true;
-                    input.setAttribute("aria-label", `Category ${index + 1} name`); input.autocomplete = "off";
-                    let originalLabel;
-                    const name = button(category.label, () => {
-                        originalLabel = category.label; input.value = category.label;
-                        name.hidden = true; input.hidden = false; row.classList.add("editing"); input.focus(); input.select();
-                    }, "category-name");
-                    const updateName = () => {
-                        name.textContent = category.label.trim() || "Unnamed category";
-                        name.title = `Rename ${category.label.trim() || "category"}`;
-                        name.setAttribute("aria-label", `Rename category ${index + 1}: ${category.label.trim() || "Unnamed category"}`);
-                    };
-                    const finishEdit = () => {
-                        if (input.hidden) return;
-                        category.label = input.value.trim(); input.value = category.label; updateName();
-                        input.hidden = true; name.hidden = false; row.classList.remove("editing"); updateRuleChoices();
-                        if (!session.busy) session.changed();
-                    };
-                    input.oninput = () => { category.label = input.value; updateName(); updateRuleChoices(); session.changed(); };
-                    input.onblur = finishEdit;
-                    input.onkeydown = event => {
-                        if (event.key === "Enter") { event.preventDefault(); finishEdit(); name.focus(); }
-                        if (event.key === "Escape") {
-                            event.preventDefault(); input.value = originalLabel; finishEdit(); name.focus();
-                        }
-                    };
-                    updateName();
-                    const remove = button("×", () => {
-                        try { session.draft.removeCategory(category.id); renderCategories(); renderRules(); session.changed(); newCategory.focus(); }
-                        catch (error) { session.error(error.message); }
-                    }, "remove");
-                    remove.setAttribute("aria-label", `Remove category ${index + 1}`);
-                    remove.title = "Remove category";
-                    row.append(name, input, remove); categories.appendChild(row);
+                refreshGroupChoices();
+                session.draft.categorySections().forEach(section => {
+                    const container = document.createElement("section"); container.className = "category-section";
+                    container.dataset.groupId = section.id ?? "";
+                    const heading = document.createElement("div"); heading.className = "group-heading";
+                    const title = document.createElement("h3"); title.className = "group-title";
+                    title.id = `category-section-${section.id ?? "independent-section"}`;
+                    container.setAttribute("aria-labelledby", title.id);
+                    if (section.id === null) title.textContent = section.label;
+                    else {
+                        const group = session.draft.groups.find(group => group.id === section.id);
+                        const edit = editableName(group, "group-name", "Main category", () => {
+                            refreshGroupChoices();
+                            heading.querySelector(".group-remove")?.setAttribute("aria-label", `Remove main category: ${group.label}`);
+                        });
+                        edit.input.dataset.groupId = group.id;
+                        title.append(edit.name, edit.input);
+                    }
+                    const count = document.createElement("span"); count.className = "group-count";
+                    count.textContent = String(section.categories.length); count.setAttribute("aria-label", `${section.categories.length} categories`);
+                    heading.append(title, count);
+                    if (section.id !== null) {
+                        const removeGroup = button("×", () => {
+                            const label = session.draft.groups.find(group => group.id === section.id).label;
+                            session.draft.removeGroup(section.id); renderCategories(); session.changed();
+                            document.querySelector(".add-group").open = true; newGroup.focus();
+                            document.getElementById("category-feedback").textContent = `${label} removed. Its categories are now independent.`;
+                        }, "remove group-remove");
+                        removeGroup.setAttribute("aria-label", `Remove main category: ${section.label}`);
+                        removeGroup.title = "Remove main category; keep its categories independent"; heading.appendChild(removeGroup);
+                    }
+                    const tiles = document.createElement("div"); tiles.className = "category-list";
+                    if (!section.categories.length) empty(tiles, section.id === null ? "Categories without a main group appear here." : "No categories in this group yet.");
+                    section.categories.forEach(category => {
+                        const row = document.createElement("div"); row.className = "category-row"; row.dataset.categoryRow = category.id;
+                        const edit = editableName(category, "category-name", "Category", () => {
+                            updateRuleChoices();
+                            row.querySelector(".category-move")?.setAttribute("aria-label", `Move category: ${category.label}`);
+                            row.querySelector(".remove")?.setAttribute("aria-label", `Remove category: ${category.label}`);
+                        });
+                        edit.input.dataset.categoryId = category.id;
+                        const move = button("↔", () => openCategoryMove(category), "category-move");
+                        move.setAttribute("aria-label", `Move category: ${category.label}`);
+                        move.setAttribute("aria-haspopup", "dialog"); move.setAttribute("aria-controls", moveDialog.id); move.title = "Drag to another section, or click to choose";
+                        const remove = button("×", () => {
+                            try { session.draft.removeCategory(category.id); renderCategories(); renderRules(); session.changed(); newCategory.focus(); }
+                            catch (error) { session.error(error.message); }
+                        }, "remove");
+                        remove.setAttribute("aria-label", `Remove category: ${category.label}`); remove.title = "Remove category";
+                        row.append(edit.name, edit.input, move, remove); tiles.appendChild(row);
+                    });
+                    container.append(heading, tiles); categories.appendChild(container);
                 });
             }
 
@@ -647,7 +873,7 @@
             }
 
             function updateRuleChoices() {
-                ruleMenu.close();
+                ruleMenu.close(); ruleCategoryMenu.close();
                 rules.querySelectorAll("select[data-rule-category]").forEach((select, index) => fillChoices(select, session.draft.rules[index].category));
             }
 
@@ -656,14 +882,15 @@
                 control.id = id; caption.htmlFor = id; caption.textContent = label; wrapper.append(caption, control);
                 if (control.tagName === "SELECT") {
                     control.setAttribute("aria-label", menuLabel);
-                    const trigger = ruleMenu.enhance(control); trigger.id = `${id}-trigger`; caption.htmlFor = trigger.id;
+                    const menu = control.hasAttribute("data-rule-category") ? ruleCategoryMenu : ruleMenu;
+                    const trigger = menu.enhance(control); trigger.id = `${id}-trigger`; caption.htmlFor = trigger.id;
                     ruleControls.set(control, trigger);
                 }
                 return wrapper;
             }
 
             function renderRules() {
-                ruleMenu.close(); ruleControls.clear();
+                ruleMenu.close(); ruleCategoryMenu.close(); ruleControls.clear();
                 rules.replaceChildren();
                 if (!session.draft.rules.length) empty(rules, session.draft.categories.length ? "No rules yet. Add one to configure keyword matching." : "Add a category before creating a rule.");
                 session.draft.rules.forEach((rule, index) => {
@@ -703,10 +930,19 @@
             }
 
             addCategory.onclick = () => {
-                try { const category = session.draft.addCategory(newCategory.value); newCategory.value = ""; renderCategories(); renderRules(); session.changed(); categories.querySelector(`[data-category-id="${category.id}"]`).parentElement.querySelector(".category-name").click(); }
+                try { const category = session.draft.addCategory(newCategory.value, newCategoryGroup.value || null); newCategory.value = ""; renderCategories(); renderRules(); session.changed(); categories.querySelector(`[data-category-id="${category.id}"]`).parentElement.querySelector(".category-name").click(); }
                 catch (error) { session.error(error.message); newCategory.focus(); }
             };
             newCategory.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); addCategory.click(); } };
+            addGroup.onclick = () => {
+                try {
+                    const group = session.draft.addGroup(newGroup.value); newGroup.value = "";
+                    renderCategories(); refreshGroupChoices(group.id); session.changed();
+                    document.querySelector(".add-group").open = false;
+                    categories.querySelector(`[data-group-id="${group.id}"] .group-name`).focus();
+                } catch (error) { session.error(error.message); newGroup.focus(); }
+            };
+            newGroup.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); addGroup.click(); } };
             addRule.onclick = () => {
                 try { session.draft.addRule(); renderRules(); session.changed(); rules.lastElementChild.querySelector("textarea").focus(); }
                 catch (error) { session.error(error.message); }

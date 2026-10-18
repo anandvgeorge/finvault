@@ -211,11 +211,29 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(body, {**self.database.runtime_status(), "commit_id": "a" * 40})
 
     def test_shared_ui_assets_are_served(self):
-        for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu")):
+        for name, expected in (("ui.css", ".page-header"), ("ui.js", "class CategoryMenu"),
+                               ("category-drag.js", "class CategoryDrag"),
+                               ("category-picker.js", "class GroupedCategoryMenu")):
             with self.subTest(name=name):
                 status, body = self.request(f"/static/{name}", json_response=False)
                 self.assertEqual(status, 200)
                 self.assertIn(expected, body)
+
+    def test_public_category_catalog_exposes_groups_and_assignments_without_rules(self):
+        settings = self.category_store.load().model_dump(mode="json")
+        settings["rules"] = [{"category": "salary", "transaction_type": "credit", "keywords": ["fictional private keyword"]}]
+        self.category_store.save(CategorySettings.model_validate(settings))
+        expected = {key: settings[key] for key in ("categories", "groups", "category_groups")}
+        self.assertEqual(self.request("/categories/catalog"), (200, expected))
+        self.assertNotIn("fictional private keyword", json.dumps(expected))
+        self.assertEqual(self.request("/categories"), (200, settings["categories"]))
+        settings["category_groups"] = {}
+        self.category_store.save(CategorySettings.model_validate(settings))
+        self.assertEqual(self.request("/categories/catalog")[1]["category_groups"], {})
+        self.category_store.path.write_text('invalid = "fictional private keyword"\n')
+        status, body = self.request("/categories/catalog")
+        self.assertEqual(status, 503)
+        self.assertNotIn("fictional private keyword", json.dumps(body))
 
     def test_empty_database_returns_zero_summary_and_empty_transactions(self):
         self.assertEqual(self.api.get_overview(period="month"), {
@@ -299,6 +317,8 @@ class ApiTests(unittest.TestCase):
                 {"category": "custom", "keywords": ["fictional private keyword"], "transaction_type": "credit"},
                 {"category": "travel", "keywords": ["example transport"], "transaction_type": None},
             ],
+            "groups": [],
+            "category_groups": {},
         }
         self.assertEqual(self.request("/settings/categories", method="PUT", body=payload), (200, payload))
         self.assertEqual(self.request("/settings/categories"), (200, payload))
@@ -310,6 +330,46 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.request("/settings/categories", method="PUT", body=payload)[0], 200)
         self.assertEqual(self.request("/categories")[1][0]["label"], "Trips")
         self.assertEqual(self.api.get_transactions()[0]["category"], "travel")
+
+    def test_group_settings_round_trip_without_rewriting_transactions_or_rules(self):
+        self.save_transaction("fixture-grouped", category="custom")
+        self.save_transaction("fixture-independent", category="lend")
+        before = list(self.database.connection.iterdump())
+        payload = {
+            "categories": [{"id": "custom", "label": "Custom"}, {"id": "lend", "label": "Lend"}],
+            "rules": [{"category": "custom", "keywords": ["example merchant"], "transaction_type": None}],
+            "groups": [{"id": "needs", "label": "Example needs"}],
+            "category_groups": {"custom": "needs"},
+        }
+        self.assertEqual(self.request("/settings/categories", method="PUT", body=payload), (200, payload))
+        self.assertEqual(self.request("/settings/categories"), (200, payload))
+        payload["groups"][0]["label"] = "Renamed needs"
+        self.assertEqual(self.request("/settings/categories", method="PUT", body=payload), (200, payload))
+        payload["category_groups"] = {}
+        self.assertEqual(self.request("/settings/categories", method="PUT", body=payload), (200, payload))
+        self.assertEqual(list(self.database.connection.iterdump()), before)
+        self.assertEqual(self.category_store.load().rules[0].category, "custom")
+        self.assertEqual(self.request("/categories"), (200, payload["categories"]))
+
+    def test_group_settings_reject_invalid_links_without_replacing_saved_config(self):
+        original = self.category_store.path.read_bytes()
+        for extra in (
+            {"category_groups": {"missing": "needs"}},
+            {"category_groups": {"custom": "missing"}},
+            {"category_groups": {"custom": ["needs", "other"]}},
+            {"groups": [{"id": "needs", "label": "One"}, {"id": "needs", "label": "Two"}]},
+        ):
+            payload = {"categories": [{"id": "custom", "label": "Custom"}],
+                       "groups": [{"id": "needs", "label": "Needs"}], **extra}
+            with self.subTest(extra=extra):
+                self.assertEqual(self.request("/settings/categories", method="PUT", body=payload)[0], 422)
+                self.assertEqual(self.category_store.path.read_bytes(), original)
+
+    def test_legacy_settings_request_defaults_to_no_groups_or_assignments(self):
+        payload = {"categories": [{"id": "custom", "label": "Custom"}], "rules": []}
+        status, body = self.request("/settings/categories", method="PUT", body=payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {**payload, "groups": [], "category_groups": {}})
 
     def test_invalid_settings_are_rejected_without_changing_private_file(self):
         original = self.category_store.path.read_bytes()
@@ -328,7 +388,7 @@ class ApiTests(unittest.TestCase):
     def test_config_edits_are_live_and_missing_file_has_no_builtin_fallback(self):
         self.category_store.path.unlink()
         self.assertEqual(self.request("/categories"), (200, []))
-        self.assertEqual(self.request("/settings/categories"), (200, {"categories": [], "rules": []}))
+        self.assertEqual(self.request("/settings/categories"), (200, {"categories": [], "rules": [], "groups": [], "category_groups": {}}))
         self.save_transaction("fixture-one")
         self.assertEqual(self.request("/transactions/1/category", method="PATCH", body={"category": "salary"})[0], 422)
         self.category_store.path.write_text('[categories]\ncustom = "Custom"\n')
