@@ -15,7 +15,7 @@ function settings() {
 }
 
 function fixture() {
-    return { categories: [{ id: "custom", label: "Custom" }, { id: "travel", label: "Travel" }], rules: [] };
+    return { categories: [{ id: "custom", label: "Custom" }, { id: "travel", label: "Travel" }], rules: [], groups: [], category_groups: {} };
 }
 
 function plain(value) { return JSON.parse(JSON.stringify(value)); }
@@ -248,6 +248,53 @@ test("adding and removing categories rejects duplicate names and dangling rule r
     assert.throws(() => empty.addRule(), /category/);
 });
 
+test("existing settings edits preserve groups, independent categories and rule targets", async () => {
+    const { SettingsSession } = settings();
+    const source = fixture();
+    source.categories.push({ id: "refunds", label: "Refunds" });
+    source.groups = [{ id: "leisure", label: "Example leisure" }];
+    source.category_groups = { travel: "leisure" };
+    source.rules = [{ category: "travel", keywords: ["example trip"], transaction_type: null }];
+    let saved;
+    const session = new SettingsSession(async (method, payload) => {
+        if (method === "GET") return source;
+        saved = plain(payload); return payload;
+    }, () => {});
+    await session.load();
+    session.draft.categories[1].label = "Renamed travel";
+    session.changed();
+    await session.save();
+    assert.deepEqual(saved.groups, source.groups);
+    assert.deepEqual(saved.category_groups, { travel: "leisure" });
+    assert.equal(saved.category_groups.refunds, undefined);
+    assert.deepEqual(saved.rules, source.rules);
+    assert.equal(session.draft.dirty, false);
+    assert.equal(source.categories[1].label, "Travel");
+    session.draft.rules = [];
+    session.draft.removeCategory("travel");
+    assert.deepEqual(plain(session.draft.categoryGroups), {});
+    assert.deepEqual(source.category_groups, { travel: "leisure" });
+    await session.save();
+    assert.deepEqual(saved.category_groups, {});
+    assert.deepEqual(saved.groups, source.groups);
+});
+
+test("legacy settings have optional groups and group validation prevents invalid saves", () => {
+    const { SettingsDraft } = settings();
+    const draft = new SettingsDraft({ categories: [{ id: "custom", label: "Custom" }], rules: [] });
+    assert.deepEqual(plain(draft.payload().groups), []);
+    assert.deepEqual(plain(draft.payload().category_groups), {});
+    assert.equal(draft.dirty, false);
+    for (const extra of [
+        { groups: [{ id: "bad id", label: "Invalid" }] },
+        { groups: [{ id: "one", label: "Same" }, { id: "two", label: "same" }] },
+        { category_groups: { missing: "missing" } },
+        { groups: null }, { category_groups: null }, { category_groups: [] },
+    ]) {
+        assert.throws(() => new SettingsDraft({ ...fixture(), ...extra }));
+    }
+});
+
 test("rule priority changes retain categories, types, keywords and boundary ordering", () => {
     const { SettingsDraft } = settings();
     const source = fixture();
@@ -390,7 +437,7 @@ test("Discard reloads current server settings; failed reload preserves the unsav
     assert.equal(session.draft.categories[0].label, "Unsaved");
     assert.equal(session.draft.dirty, true);
     fail = false;
-    source = { categories: [{ id: "server", label: "Current server label" }], rules: [] };
+    source = { categories: [{ id: "server", label: "Current server label" }], rules: [], groups: [], category_groups: {} };
     await session.load();
     assert.deepEqual(plain(session.draft.payload()), source);
     assert.equal(session.draft.dirty, false);

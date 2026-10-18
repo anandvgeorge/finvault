@@ -65,6 +65,10 @@ Your private settings are saved in `categories.toml`:
 
 The file stays out of Git. Laptop and Pi settings are separate.
 
+Optional `[groups]` and `[category_groups]` sections define main categories and
+link existing categories to them; see `categories.example.toml`. Categories
+without a link, such as Lend and Refunds, remain independent.
+
 In Settings, select **Preview**, then **Apply** to categorise existing
 Uncategorized transactions. Leave the month blank for all data, or select a month.
 These buttons use the server hosting the page and keep existing assignments.

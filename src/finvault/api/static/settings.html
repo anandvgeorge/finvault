@@ -443,12 +443,22 @@
                 if (!settings || !Array.isArray(settings.categories) || !Array.isArray(settings.rules)) throw new Error("Invalid settings response.");
                 this.categories = settings.categories.map(category => ({ id: category.id, label: category.label }));
                 this.rules = settings.rules.map(rule => ({ category: rule.category, keywords: [...rule.keywords], transaction_type: rule.transaction_type ?? null }));
+                if (settings.groups !== undefined && !Array.isArray(settings.groups)) throw new Error("Invalid main categories response.");
+                this.groups = (settings.groups ?? []).map(group => ({ id: group.id, label: group.label }));
+                const links = settings.category_groups === undefined ? {} : settings.category_groups;
+                if (!links || typeof links !== "object" || Array.isArray(links)) throw new Error("Invalid main category assignments response.");
+                this.categoryGroups = { ...links };
                 if (this.validationError()) throw new Error("Invalid settings response.");
                 this.baseline = JSON.stringify(this.snapshot());
             }
 
             snapshot() {
-                return { categories: this.categories.map(category => ({ ...category })), rules: this.rules.map(rule => ({ ...rule, keywords: [...rule.keywords] })) };
+                return {
+                    categories: this.categories.map(category => ({ ...category })),
+                    rules: this.rules.map(rule => ({ ...rule, keywords: [...rule.keywords] })),
+                    groups: this.groups.map(group => ({ ...group })),
+                    category_groups: { ...this.categoryGroups },
+                };
             }
 
             get dirty() { return JSON.stringify(this.snapshot()) !== this.baseline; }
@@ -473,6 +483,7 @@
             removeCategory(id) {
                 if (this.rules.some(rule => rule.category === id)) throw new Error("Choose another category for its rules before removing this category.");
                 this.categories = this.categories.filter(category => category.id !== id);
+                delete this.categoryGroups[id];
             }
 
             addRule() {
@@ -501,6 +512,16 @@
                     if (!ids.has(rule.category)) return `Choose an available category for rule ${index + 1}.`;
                     if (![null, "debit", "credit"].includes(rule.transaction_type)) return `Choose Either, Debit, or Credit for rule ${index + 1}.`;
                     if (!Array.isArray(rule.keywords) || !rule.keywords.length || rule.keywords.length > 100 || rule.keywords.some(keyword => typeof keyword !== "string" || !keyword.trim() || keyword.trim().length > 200)) return `Rule ${index + 1} needs 1–100 keywords, each between 1 and 200 characters.`;
+                }
+                const groupIds = new Set(), groupLabels = new Set();
+                if (this.groups.length > 500 || Object.keys(this.categoryGroups).length > 500) return "There are too many main categories or assignments.";
+                for (const group of this.groups) {
+                    if (typeof group.id !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(group.id) || groupIds.has(group.id)) return "Main categories must have valid, unique IDs.";
+                    if (typeof group.label !== "string" || !group.label.trim() || group.label.trim().length > 80 || groupLabels.has(group.label.trim().toLowerCase())) return "Main categories must have valid, unique names.";
+                    groupIds.add(group.id); groupLabels.add(group.label.trim().toLowerCase());
+                }
+                for (const [category, group] of Object.entries(this.categoryGroups)) {
+                    if (!ids.has(category) || !groupIds.has(group)) return "Main category assignments must use available categories and main categories.";
                 }
                 return "";
             }

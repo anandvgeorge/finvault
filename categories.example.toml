@@ -10,6 +10,23 @@ investment = "Investment"
 salary = "Salary"
 lend = "Lend"
 other = "Other"
+refunds = "Refunds"
+
+# Main categories are configurable; existing files can omit both sections.
+[groups]
+necessary = "Necessary"
+lifestyle = "Lifestyle"
+investments = "Investments"
+income = "Income"
+
+# Each existing category can belong to one main category.
+# Omitted categories (lend, refunds, other) remain independent categories.
+[category_groups]
+necessary = "necessary"
+lifestyle = "lifestyle"
+eat_out = "lifestyle"
+investment = "investments"
+salary = "income"
 
 # Rules apply to newly parsed transactions during ingestion.
 # Match body text only, ignoring case and repeated whitespace.

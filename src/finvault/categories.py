@@ -10,7 +10,7 @@ from typing import Protocol
 import tomli_w
 from pydantic import ValidationError
 
-from finvault.models.category import Category, CategorySettings
+from finvault.models.category import Category, CategoryGroup, CategorySettings
 
 
 class CategoryConfigError(Exception):
@@ -39,14 +39,17 @@ class TomlCategoryStore:
             except (OSError, ValueError) as error:
                 raise CategoryConfigError("Could not read category settings; check categories.toml") from error
             try:
-                if set(data) - {"categories", "rules"}:
+                if set(data) - {"categories", "rules", "groups", "category_groups"}:
                     raise ValueError("Unknown settings fields")
                 catalog = data.get("categories", {})
-                if not isinstance(catalog, dict):
-                    raise ValueError("Categories must be a TOML table")
+                groups = data.get("groups", {})
+                if not isinstance(catalog, dict) or not isinstance(groups, dict):
+                    raise ValueError("Categories and main categories must be TOML tables")
                 return CategorySettings(
                     categories=tuple(Category(id=key, label=label) for key, label in catalog.items()),
                     rules=data.get("rules", ()),
+                    groups=tuple(CategoryGroup(id=key, label=label) for key, label in groups.items()),
+                    category_groups=data.get("category_groups", {}),
                 )
             except (ValidationError, ValueError, TypeError) as error:
                 raise CategoryConfigError("Invalid category settings; check categories.toml") from error
@@ -55,6 +58,8 @@ class TomlCategoryStore:
         data = {
             "categories": {category.id: category.label for category in settings.categories},
             "rules": [rule.model_dump(mode="json", exclude_none=True) for rule in settings.rules],
+            "groups": {group.id: group.label for group in settings.groups},
+            "category_groups": settings.category_groups,
         }
         temporary = None
         with self._lock:
