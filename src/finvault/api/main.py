@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, HTTPException, Path as PathParameter, Response
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from finvault.analysis import summarize_groups
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
@@ -80,6 +80,7 @@ class BackfillRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     month: str | None = None
+    source_categories: list[CategoryId | None] = Field(default_factory=lambda: [None], min_length=1, max_length=501)
 
     @field_validator("month")
     @classmethod
@@ -91,23 +92,34 @@ class BackfillRequest(BaseModel):
 def backfill_category_settings(
     action: Literal["preview", "apply"], request: BackfillRequest, response: Response,
 ):
-    """Run saved rules on this host's existing Uncategorized transactions."""
+    """Run saved rules on stored transactions, optionally replacing assignments."""
     response.headers["Cache-Control"] = "no-store"
-    matcher = KeywordCategoryMatcher(category_settings())
+    settings = category_settings()
+    known = {category.id for category in settings.categories}
+    if any(category is not None and category not in known for category in request.source_categories):
+        raise HTTPException(status_code=422, detail="Choose source categories from your saved settings.")
+    matcher = KeywordCategoryMatcher(settings)
     mode = "ro" if action == "preview" else "rw"
     uri = database.db_path.resolve().as_uri() + f"?mode={mode}"
     try:
         # A separate connection keeps a bulk update's transaction independent
         # of dashboard requests. URI modes also refuse a missing database.
         with closing(sqlite3.connect(uri, uri=True, timeout=10)) as connection:
-            preview = preview_categories(connection, matcher, month=request.month)
+            preview = preview_categories(connection, matcher, month=request.month, source_categories=request.source_categories)
             updated = apply_categories(connection, preview.proposals) if action == "apply" else None
     except sqlite3.Error:
         raise HTTPException(status_code=503, detail="Could not read or update categories. Try again.") from None
     return {
         "month": request.month,
+        "source_categories": request.source_categories,
         "considered": preview.considered,
-        "matched": len(preview.proposals),
+        "matched": preview.matched,
+        "changes": len(preview.proposals),
+        "proposals": [
+            {"id": proposal.transaction_id, "date": proposal.transaction_date[:10],
+             "previous_category": proposal.previous_category, "category": proposal.category}
+            for proposal in preview.proposals
+        ] if action == "preview" else [],
         "unmatched": preview.unmatched,
         "missing_body": preview.missing_body,
         "unsupported_type": preview.unsupported_type,

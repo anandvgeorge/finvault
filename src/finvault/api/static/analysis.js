@@ -96,10 +96,10 @@ class AnalysisView {
         this.amounts.set(element, value);
     }
 
-    amountLines(totals, compact, scope) {
+    amountLines(totals, scope) {
         const list = this.node("dl", "card-amounts");
         const entries = [["debit", "Debits"], ["credit", "Credits"]]
-            .filter(([type]) => !compact || Number(totals[`total_${type}s`]) !== 0);
+            .filter(([type]) => Number(totals[`total_${type}s`]) !== 0);
         if (!entries.length) entries.push(["total", "Total"]);
         for (const [type, label] of entries) {
             const line = this.node("div", `amount-line ${type}`);
@@ -112,7 +112,7 @@ class AnalysisView {
         return list;
     }
 
-    card(entry, compact, scope, key, action) {
+    card(entry, showPercentage, scope, key, action) {
         const card = this.node("article", "analysis-card");
         const heading = this.node("h3", "");
         const button = this.node("button", "analysis-card-button", entry.label);
@@ -125,12 +125,12 @@ class AnalysisView {
         heading.appendChild(button);
         card.appendChild(heading);
         this.buttons[scope].set(key, { button, card });
-        const count = this.node("p", compact ? "card-count card-meta" : "card-count");
-        if (compact) {
-            const label = this.node("span", "card-count-label");
-            label.appendChild(this.node("span", "count-full", this.count(entry.transaction_count)));
-            label.appendChild(this.node("span", "count-short", `${entry.transaction_count.toLocaleString("en-IN")} txn${entry.transaction_count === 1 ? "" : "s"}`));
-            count.appendChild(label);
+        const count = this.node("p", "card-count card-meta");
+        const label = this.node("span", "card-count-label");
+        label.appendChild(this.node("span", "count-full", this.count(entry.transaction_count)));
+        label.appendChild(this.node("span", "count-short", `${entry.transaction_count.toLocaleString("en-IN")} txn${entry.transaction_count === 1 ? "" : "s"}`));
+        count.appendChild(label);
+        if (showPercentage) {
             const percentage = this.node("span", "income-percentage");
             percentage.dataset.format = "percentage";
             percentage.title = entry.income_percentage == null
@@ -138,9 +138,9 @@ class AnalysisView {
                 : "Percent of income for the selected period";
             this.setAmount(percentage, entry.income_percentage ?? null, scope);
             count.appendChild(percentage);
-        } else count.textContent = this.count(entry.transaction_count);
+        }
         card.appendChild(count);
-        card.appendChild(this.amountLines(entry, compact, scope));
+        card.appendChild(this.amountLines(entry, scope));
         return card;
     }
 

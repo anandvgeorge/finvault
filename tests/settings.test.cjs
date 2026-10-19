@@ -11,7 +11,7 @@ function settings() {
     const context = vm.createContext({ document: { addEventListener() {} }, fetch: async () => { throw new Error("Unexpected request"); } });
     vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings, statusTime, refreshSystemStatus, backfillCommands, copyCommandText, requestBackfill, BackfillSession, initializeBrowserBackfill })", context), context };
+    return { ...vm.runInContext("({ categoryId, SettingsDraft, SettingsSession, requestSettings, statusTime, refreshSystemStatus, backfillScope, backfillCommands, copyCommandText, requestBackfill, BackfillSession, initializeBrowserBackfill })", context), context };
 }
 
 function fixture() {
@@ -38,8 +38,10 @@ test("browser backfill posts the shared optional month to this server and handle
     assert.equal(requests[1].url, "/settings/categories/backfill/apply");
     assert.equal(requests[1].options.method, "POST");
     assert.equal(requests[1].options.cache, "no-store");
-    assert.deepEqual(JSON.parse(requests[0].options.body), { month: null });
-    assert.deepEqual(JSON.parse(requests[1].options.body), { month: "2001-02" });
+    assert.deepEqual(JSON.parse(requests[0].options.body), { month: null, source_categories: [null] });
+    assert.deepEqual(JSON.parse(requests[1].options.body), { month: "2001-02", source_categories: [null] });
+    await requestBackfill("preview", "", [null, "custom"]);
+    assert.deepEqual(JSON.parse(requests[2].options.body), { month: null, source_categories: [null, "custom"] });
     context.fetch = async () => ({ ok: false, status: 503, json: async () => ({ detail: "Could not read or update categories. Try again." }) });
     await assert.rejects(requestBackfill("apply", ""), /Could not read or update/);
     context.fetch = async () => ({ ok: false, status: 422, json: async () => ({ detail: [{ input: "fictional private input" }] }) });
@@ -56,18 +58,21 @@ test("browser backfill blocks unsaved or duplicate requests and reports preview 
     await state.run("apply");
     assert.equal(calls.length, 0);
     state.ready = true;
+    await state.run("apply");
+    assert.equal(calls.length, 0);
+    assert.match(state.message, /Run Preview/);
     const run = state.run("preview", "2001-02");
     assert.equal(state.busy, true);
     assert.match(state.message, /Checking matches.*2001-02/);
     await state.run("apply");
     assert.equal(calls.length, 1);
-    pending.resolve({ considered: 5, matched: 2, unmatched: 1, missing_body: 1, unsupported_type: 1 });
+    pending.resolve({ considered: 5, matched: 2, changes: 2, cleared: 0, unmatched: 1, missing_body: 1, unsupported_type: 1 });
     await run;
     assert.equal(state.busy, false);
-    assert.match(state.message, /Checked: 5.*Matches: 2.*No match: 1.*Missing body: 1.*Unsupported type: 1.*No changes saved/);
-    state.request = async () => ({ considered: 2, matched: 2, updated: 1, skipped: 1, unmatched: 0, missing_body: 0, unsupported_type: 0 });
-    await state.run("apply");
-    assert.match(state.message, /Applied.*all months.*Updated: 1.*Skipped: 1/);
+    assert.match(state.message, /Checked: 5.*Matches: 2.*No match \(kept\): 1.*Missing body: 1.*Unsupported type: 1.*No changes saved/);
+    state.request = async () => ({ considered: 2, matched: 2, changes: 2, cleared: 0, updated: 1, skipped: 1, unmatched: 0, missing_body: 0, unsupported_type: 0 });
+    await state.run("apply", "2001-02");
+    assert.match(state.message, /Applied.*2001-02.*Updated: 1.*Skipped: 1/);
     state.request = async () => { throw new Error("Try again."); };
     await state.run("preview");
     assert.equal(state.error, true);
@@ -77,37 +82,80 @@ test("browser backfill blocks unsaved or duplicate requests and reports preview 
     assert.match(state.message, /YYYY-MM/);
 });
 
-test("browser buttons share the month field, require saved settings, and recover after failure", async () => {
+test("browser controls invalidate previews when dates, source categories or settings change", async () => {
     const { context, initializeBrowserBackfill, SettingsDraft } = settings();
-    const elements = Object.fromEntries(["backfill-month", "run-backfill-preview", "run-backfill-apply", "backfill-result", "backfill-actions"].map(id => [id, {
-        dataset: {}, value: "2001-02", disabled: false, textContent: "",
-        setAttribute() {}, checkValidity() { return this.value !== "invalid"; },
+    const elements = Object.fromEntries(["backfill-month", "run-backfill-preview", "run-backfill-apply", "backfill-result", "backfill-actions", "backfill-proposals"].map(id => [id, {
+        dataset: {}, value: "2001-02", disabled: false, textContent: "", hidden: false,
+        setAttribute() {}, replaceChildren() {}, checkValidity() { return this.value !== "invalid"; },
         addEventListener(event, callback) { this[event] = callback; },
     }]));
     context.document.getElementById = id => elements[id];
+    let selected = [null], sourcesDisabled;
+    const sources = { values: () => selected, configure: () => false, labelFor: id => id || "Uncategorized", setDisabled: value => { sourcesDisabled = value; } };
     const session = { draft: null, busy: false };
-    const view = initializeBrowserBackfill(session);
+    const view = initializeBrowserBackfill(session, sources);
     const preview = elements["run-backfill-preview"], apply = elements["run-backfill-apply"], month = elements["backfill-month"];
     assert.equal(preview.disabled, true);
     session.draft = new SettingsDraft(fixture()); view.refresh();
-    assert.equal(preview.disabled || apply.disabled, false);
-    session.draft.categories[0].label = "Changed"; view.refresh();
+    assert.equal(preview.disabled, false); assert.equal(apply.disabled, true);
+    const requests = [];
+    context.fetch = async (url, options) => {
+        requests.push(JSON.parse(options.body));
+        return { ok: true, json: async () => ({ considered: 3, matched: 2, changes: 1, unmatched: 1, missing_body: 0, unsupported_type: 0, updated: 1, skipped: 0, proposals: [] }) };
+    };
+    preview.onclick(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(apply.disabled, false);
+    assert.match(elements["backfill-result"].textContent, /Changes: 1.*No changes saved/);
+    selected = [null, "custom"]; sources.onChange();
     assert.equal(apply.disabled, true);
-    assert.match(elements["backfill-result"].textContent, /Save your rule changes/);
-    session.draft = new SettingsDraft(fixture()); view.refresh();
-    const pending = deferred();
-    context.fetch = () => pending.promise;
-    apply.onclick();
-    assert.equal(preview.disabled && apply.disabled && month.disabled, true);
-    assert.equal(apply.textContent, "Applying…");
-    pending.reject(new Error("Synthetic network failure"));
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(preview.disabled || apply.disabled || month.disabled, false);
-    assert.match(elements["backfill-result"].textContent, /may have completed/);
-    month.value = "invalid"; month.input();
+    preview.onclick(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(apply.disabled, false);
+    apply.onclick(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(apply.disabled, true);
+    assert.deepEqual(requests, [
+        { month: "2001-02", source_categories: [null] },
+        { month: "2001-02", source_categories: [null, "custom"] },
+        { month: "2001-02", source_categories: [null, "custom"] },
+    ]);
+    selected = []; sources.onChange();
     assert.equal(preview.disabled && apply.disabled, true);
-    month.value = ""; month.input();
-    assert.equal(preview.disabled || apply.disabled, false);
+    assert.match(elements["backfill-result"].textContent, /Choose at least one/);
+    selected = ["custom"]; sources.onChange();
+    preview.onclick(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(apply.disabled, false);
+    month.value = ""; month.input(); assert.equal(apply.disabled, true);
+    preview.onclick(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(apply.disabled, false);
+    const pending = deferred(); context.fetch = () => pending.promise;
+    apply.onclick(); assert.equal(preview.disabled && apply.disabled && month.disabled && sourcesDisabled, true);
+    pending.reject(new Error("Synthetic network failure")); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(apply.disabled, true); assert.equal(month.disabled || sourcesDisabled, false);
+    assert.match(elements["backfill-result"].textContent, /may have completed/);
+    month.value = "invalid"; month.input(); assert.equal(preview.disabled, true);
+    session.draft.categories[0].label = "Changed"; view.refresh();
+    assert.match(elements["backfill-result"].textContent, /Save your rule changes/);
+});
+
+test("preview is tied to the selected categories and month and exposes proposed changes", async () => {
+    const { BackfillSession } = settings();
+    const calls = [];
+    const proposals = [{ id: 1, date: "2001-01-02", previous_category: "restaurant", category: "fnb" }];
+    const state = new BackfillSession(async (...args) => {
+        calls.push(args);
+        return { considered: 2, matched: 1, unmatched: 1, changes: 1, missing_body: 0, unsupported_type: 0, proposals };
+    }, () => {});
+    state.ready = true;
+    await state.run("apply", "", [null]); assert.equal(calls.length, 0);
+    await state.run("preview", "2001-01", ["restaurant", null]);
+    assert.deepEqual(plain(state.proposals), proposals);
+    assert.equal(state.canApply("2001-01", [null, "restaurant"]), true);
+    await state.run("apply", "2001-02", [null, "restaurant"]);
+    await state.run("apply", "2001-01", [null]); assert.equal(calls.length, 1);
+    state.request = async () => { throw new Error("Synthetic failure"); };
+    await state.run("apply", "2001-01", [null, "restaurant"]);
+    assert.equal(state.previewed, null); assert.deepEqual(plain(state.proposals), []);
+    await state.run("apply", "2001-01", [null, "restaurant"]); assert.match(state.message, /Run Preview/);
+    await state.run("preview", "", []); assert.match(state.message, /at least one/);
 });
 
 test("backfill commands distinguish preview from apply and support an optional month", () => {
@@ -118,6 +166,8 @@ test("backfill commands distinguish preview from apply and support an optional m
     const month = backfillCommands("laptop", "2001-02");
     assert.equal(month.preview, all.preview + " --month 2001-02");
     assert.equal(month.apply, month.preview + " --apply");
+    assert.equal(backfillCommands("laptop", "2001-02", [null, "custom"]).preview, month.preview + " --category custom --include-uncategorized");
+    assert.equal(backfillCommands("pi", "", ["custom"]).apply, backfillCommands("pi").preview + " --category custom --apply");
 });
 
 test("Pi commands quote paths and change to the runtime directory before running", () => {
@@ -134,6 +184,9 @@ test("invalid months and unknown hosts cannot become copyable shell commands", (
         assert.throws(() => backfillCommands("laptop", month), /YYYY-MM/);
     }
     assert.throws(() => backfillCommands("unknown"), /Choose/);
+    for (const selected of [[], ["bad; echo example"], ["$(echo example)"], ["custom\n"], [1], true]) {
+        assert.throws(() => backfillCommands("laptop", "", selected), /source categor/);
+    }
 });
 
 test("copy uses the clipboard API without changing focus or creating a field", async () => {

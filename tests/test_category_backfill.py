@@ -15,7 +15,7 @@ from finvault.backfill_categories import apply_categories, calendar_month, main,
 from finvault.categories import TomlCategoryStore
 from finvault.category_matching import KeywordCategoryMatcher
 from finvault.database.database import Database
-from finvault.models.category import Category, CategoryRule, CategorySettings
+from finvault.models.category import Category, CategoryGroup, CategoryRule, CategorySettings
 from tests.fixtures import email, transaction
 
 
@@ -34,6 +34,8 @@ class CategoryBackfillTests(unittest.TestCase):
                 CategoryRule(category="custom", keywords=("fictional phrase",), transaction_type="debit"),
                 CategoryRule(category="another", keywords=("fictional phrase",), transaction_type="credit"),
             ),
+            groups=(CategoryGroup(id="spending_fixture", label="Lifestyle"),),
+            category_groups={"custom": "spending_fixture", "another": "spending_fixture"},
         )
         self.store.save(self.settings)
         self.matcher = KeywordCategoryMatcher(self.settings)
@@ -67,7 +69,7 @@ class CategoryBackfillTests(unittest.TestCase):
             output = self.command("--month", "2001-01")
         self.assertTrue(connect.call_args.args[0].endswith("?mode=ro"))
         self.assertIn("Considered: 2; Matches: 1; No match: 1", output)
-        self.assertIn("1 | 2001-01-02 | custom", output)
+        self.assertIn("1 | 2001-01-02 | Uncategorized -> custom", output)
         self.assertIn("Preview only", output)
         self.assertNotIn("fictional phrase", output.casefold())
         self.assertNotIn("Example Merchant", output)
@@ -139,6 +141,71 @@ class CategoryBackfillTests(unittest.TestCase):
         with closing(self.connect("rw")) as connection:
             self.assertEqual(apply_categories(connection, preview.proposals), 0)
         self.assertEqual(self.categories(), {"fixture-concurrent": "another"})
+
+    def test_selected_categories_change_only_on_a_match_without_reparsing(self):
+        self.save("fixture-replace", category="another")
+        self.save("fixture-clear", category="custom", body="No matching rule")
+        self.save("fixture-unchanged", category="custom")
+        self.save("fixture-empty", category="another", body="")
+        self.save("fixture-unsupported", category="another", kind="unknown")
+        self.save("fixture-outside", category="another", date="2001-02-01T00:00:00+05:30")
+        self.save("fixture-protected", category="protected")
+        self.save("fixture-protected-no-match", category="protected", body="No matching rule")
+        self.store.save(self.settings.model_copy(update={
+            "categories": self.settings.categories + (Category(id="protected", label="Salary"),),
+        }))
+        before = list(self.database.connection.iterdump())
+        with closing(self.connect()) as connection:
+            preview = preview_categories(connection, self.matcher, month="2001-01", source_categories=[None, "custom", "another"])
+        self.assertEqual((preview.considered, preview.matched, preview.unmatched, preview.missing_body, preview.unsupported_type), (5, 2, 1, 1, 1))
+        self.assertEqual([(p.transaction_id, p.previous_category, p.category) for p in preview.proposals], [(1, "another", "custom")])
+        self.assertEqual(list(self.database.connection.iterdump()), before)
+        columns = "id, amount, currency, transaction_type, merchant, transaction_date, account, source, reference, email_id"
+        transactions = self.database.connection.execute(f"SELECT {columns} FROM transactions ORDER BY id").fetchall()
+        emails = self.database.connection.execute("SELECT * FROM emails ORDER BY id").fetchall()
+        output = self.command("--category", "custom", "--category", "another", "--include-uncategorized", "--month", "2001-01", "--apply")
+        self.assertIn("No matching rule keeps the current category", output)
+        self.assertIn("Updated: 1", output)
+        self.assertEqual(self.categories(), {
+            "fixture-replace": "custom", "fixture-clear": "custom", "fixture-unchanged": "custom",
+            "fixture-empty": "another", "fixture-unsupported": "another", "fixture-outside": "another",
+            "fixture-protected": "protected", "fixture-protected-no-match": "protected",
+        })
+        self.assertEqual(self.database.connection.execute(f"SELECT {columns} FROM transactions ORDER BY id").fetchall(), transactions)
+        self.assertEqual(self.database.connection.execute("SELECT * FROM emails ORDER BY id").fetchall(), emails)
+        self.assertIn("Updated: 0", self.command("--category", "custom", "--category", "another", "--include-uncategorized", "--month", "2001-01", "--apply"))
+
+    def test_selected_category_updates_preserve_concurrent_edits_and_roll_back(self):
+        self.save("fixture-replace", category="another")
+        self.save("fixture-clear", category="custom", kind="credit")
+        with closing(self.connect()) as connection:
+            preview = preview_categories(connection, self.matcher, source_categories=[None, "custom", "another"])
+        self.database.update_transaction_category(1, None)
+        self.database.update_transaction_category(2, "another")
+        with closing(self.connect("rw")) as connection:
+            self.assertEqual(apply_categories(connection, preview.proposals), 0)
+        self.assertEqual(self.categories(), {"fixture-replace": None, "fixture-clear": "another"})
+        self.database.update_transaction_category(2, "custom")
+        self.database.connection.execute("""
+            CREATE TRIGGER reject_reapply BEFORE UPDATE OF category ON transactions
+            WHEN NEW.id = 2 BEGIN SELECT RAISE(ABORT, 'Synthetic failure'); END
+        """)
+        self.database.connection.commit()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.command("--category", "custom", "--include-uncategorized", "--apply")
+        self.assertEqual(self.categories(), {"fixture-replace": None, "fixture-clear": "custom"})
+
+    def test_source_selection_is_explicit_and_can_exclude_uncategorized(self):
+        self.save("fixture-uncategorized")
+        self.save("fixture-assigned", category="another")
+        for selected, considered in (([None], 1), (["another"], 1), ([None, "another"], 2), ([], 0)):
+            with self.subTest(selected=selected), closing(self.connect()) as connection:
+                preview = preview_categories(connection, self.matcher, source_categories=selected)
+                self.assertEqual(preview.considered, considered)
+        self.assertIn("Updated: 1", self.command("--category", "another", "--apply"))
+        self.assertEqual(self.categories(), {"fixture-uncategorized": None, "fixture-assigned": "custom"})
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.command("--category", "unknown_category", "--apply")
 
     def test_failure_rolls_back_the_whole_batch_and_reports_no_private_content(self):
         self.save("fixture-first")

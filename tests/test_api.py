@@ -123,6 +123,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body, {
             "month": None, "considered": 4, "matched": 2, "unmatched": 1,
             "missing_body": 1, "unsupported_type": 0, "updated": None, "skipped": 0,
+            "source_categories": [None], "changes": 2,
+            "proposals": [
+                {"id": 1, "date": "2001-01-02", "previous_category": None, "category": "custom"},
+                {"id": 2, "date": "2001-02-02", "previous_category": None, "category": "custom"},
+            ],
         })
         status, body = self.request("/settings/categories/backfill/preview", method="POST", body={"month": "2001-01"})
         self.assertEqual(status, 200)
@@ -153,11 +158,43 @@ class ApiTests(unittest.TestCase):
 
     def test_browser_backfill_rejects_bad_input_and_get_cannot_apply(self):
         for body in ({"month": "0000-01"}, {"month": "2001-13"}, {"month": "2001-2"},
-                     {"month": "2001-01' OR 1=1 --"}, {"month": ""}, {"database": "other.db"}):
+                     {"month": "2001-01' OR 1=1 --"}, {"month": ""}, {"database": "other.db"},
+                     {"source_categories": []}, {"source_categories": ["missing"]},
+                     {"source_categories": [1]}, {"source_categories": "custom"},
+                     {"source_categories": ["custom; DROP TABLE transactions"]}):
             with self.subTest(body=body):
                 self.assertEqual(self.request("/settings/categories/backfill/apply", method="POST", body=body)[0], 422)
         self.assertEqual(self.request("/settings/categories/backfill/unknown", method="POST", body={})[0], 422)
         self.assertEqual(self.request("/settings/categories/backfill/apply")[0], 405)
+
+    def test_browser_source_selection_previews_changes_and_keeps_unmatched_and_unselected_categories(self):
+        self.backfill_fixture()
+        self.database.update_transaction_category(4, "custom")  # Credit has no matching rule.
+        self.database.update_transaction_category(5, "custom")  # Missing body must be preserved.
+        self.save_transaction("fixture-protected-income", category="salary")
+        self.category_store.save(CategorySettings(
+            categories=(Category(id="new", label="New"), Category(id="custom", label="Custom"),
+                        Category(id="salary", label="Salary")),
+            rules=(CategoryRule(category="new", keywords=("synthetic",), transaction_type="debit"),),
+            groups=(CategoryGroup(id="spending_fixture", label="Lifestyle"),),
+            category_groups={"custom": "spending_fixture", "new": "spending_fixture"},
+        ))
+        before = list(self.database.connection.iterdump())
+        request = {"month": "2001-01", "source_categories": [None, "custom"]}
+        status, body = self.request("/settings/categories/backfill/preview", method="POST", body=request)
+        self.assertEqual(status, 200)
+        self.assertEqual((body["considered"], body["matched"], body["changes"]), (4, 2, 2))
+        self.assertEqual(body["proposals"], [
+            {"id": 1, "date": "2001-01-02", "previous_category": None, "category": "new"},
+            {"id": 3, "date": "2001-01-02", "previous_category": "custom", "category": "new"},
+        ])
+        self.assertEqual(list(self.database.connection.iterdump()), before)
+        status, body = self.request("/settings/categories/backfill/apply", method="POST", body=request)
+        self.assertEqual((status, body["updated"], body["skipped"]), (200, 2, 0))
+        categories = dict(self.database.connection.execute("SELECT id, category FROM transactions"))
+        self.assertEqual(categories, {1: "new", 2: None, 3: "new", 4: "custom", 5: "custom", 6: "salary"})
+        status, body = self.request("/settings/categories/backfill/apply", method="POST", body=request)
+        self.assertEqual((body["matched"], body["changes"], body["updated"]), (0, 0, 0))
 
     def test_browser_backfill_database_failure_rolls_back_and_hides_details(self):
         self.backfill_fixture()

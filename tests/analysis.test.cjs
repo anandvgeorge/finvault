@@ -76,6 +76,12 @@ test("main group cards omit zero sides, preserve mixed totals, and keep safe lab
     assert.equal(empty.children[2].textContent, "Total₹0");
     assert.equal(empty.children[1].children[1].textContent, "—");
     assert.match(get("other-cards").textContent, /Refund.*Credits₹100.*Uncategorized/);
+    const refund = get("other-cards").children[0];
+    assert.equal(refund.children[1].className, "card-count card-meta");
+    assert.equal(refund.children[1].children[0].children[0].textContent, "1 transaction");
+    assert.equal(refund.children[2].children.length, 1);
+    assert.equal(refund.children[2].textContent, "Credits₹100");
+    assert.equal(get("other-cards").children[1].children[2].textContent, "Total₹0");
     get("toggle-totals").onclick();
     assert.doesNotMatch(get("group-cards").textContent, /%/);
     for (const id of ["group-cards", "other-cards"]) {

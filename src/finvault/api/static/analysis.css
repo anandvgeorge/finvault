@@ -5,8 +5,8 @@
 .analysis-empty:empty { display: none; }
 .analysis-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .analysis-card {
-    min-width: 0; padding: 18px 16px; background: var(--panel); border: 1px solid var(--border);
-    border-top: 2px solid var(--yellow); border-radius: 4px; box-shadow: 3px 3px 0 #090c08;
+    min-width: 0; padding: 18px 16px; background: var(--panel); border: 1px solid #777b4f;
+    border-top-width: 2px; border-radius: 4px; box-shadow: 3px 3px 0 #090c08;
 }
 .analysis-card h3 { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .card-count { margin: 6px 0 16px; color: var(--muted); font-size: 10px; }
@@ -23,7 +23,7 @@
 .analysis-card { position: relative; }
 .analysis-card-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; }
 .analysis-card-button::after { content: ""; position: absolute; inset: 0; border-radius: 4px; }
-.analysis-card:hover { border-color: #777b4f; }
+.analysis-card:hover { border-color: var(--border); border-top-color: var(--yellow); }
 .analysis-card[data-selected="true"] { border-color: var(--yellow); background: #252719; }
 .analysis-card-button:focus-visible { outline: none; }
 .analysis-card-button:focus-visible::after { outline: 2px solid var(--yellow); outline-offset: 3px; }
@@ -34,7 +34,6 @@
 #subcategory-section { padding: 0 0 20px; border-bottom: 1px dashed var(--border); }
 #other-section { margin-top: 24px; }
 .analysis-subheading { margin-bottom: 14px; }
-#other-cards .analysis-card, #subcategory-cards .analysis-card { border-top: 1px solid var(--border); }
 @media (max-width: 1000px) and (min-width: 701px) {
     .analysis-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
