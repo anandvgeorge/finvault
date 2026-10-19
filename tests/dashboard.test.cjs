@@ -16,7 +16,7 @@ function dashboard() {
     vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/ui.js"), "utf8"), context);
     vm.runInContext(readFileSync(resolve(__dirname, "../src/finvault/api/static/summary-controls.js"), "utf8"), context);
     vm.runInContext(script, context);
-    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryEditor, CategoryCatalog, fetchCategoryCatalog, saveCategory, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate })", context), context };
+    return { ...vm.runInContext("({ PeriodSelection, AmountVisibility, CategoryEditor, CategoryCatalog, fetchCategoryCatalog, saveCategory, TransactionFilters, TransactionSort, DashboardLoader, fetchJSON, renderTransactionDate, preserveTransactionViewport })", context), context };
 }
 
 function selection(years = [2024, 2025]) {
@@ -84,47 +84,48 @@ test("amounts start visible with accessible Hide actions", () => {
     assert.equal(button.dataset.hidden, "false");
 });
 
-test("totals and transaction amounts hide independently and restore their exact values", () => {
+test("one global control hides and restores overview, transaction amounts and percentages together", () => {
     const { AmountVisibility } = dashboard();
-    const totalsButton = element(), transactionButton = element();
-    const totals = new AmountVisibility(totalsButton, "totals");
-    const transactions = new AmountVisibility(transactionButton, "transaction amounts");
-    const cards = [element(), element(), element(), element(), element()];
-    const values = [42.5, 100, 57.5, 0, -25];
-    cards.forEach((card, index) => totals.set(card, values[index]));
-    const amount = element();
-    transactions.set(amount, "42.50");
-    totalsButton.onclick();
-    assert.equal(cards.every(card => card.textContent === "••••"), true);
-    assert.equal(cards[0].children[0].getAttribute("aria-label"), "Amount hidden");
-    assert.equal(totalsButton.getAttribute("aria-label"), "Show totals");
-    assert.equal(totalsButton.dataset.hidden, "true");
-    assert.equal(amount.textContent, "₹42.5");
-    transactionButton.onclick();
-    assert.equal(amount.textContent, "••••");
-    assert.equal(transactionButton.getAttribute("aria-label"), "Show transaction amounts");
-    totalsButton.onclick();
-    assert.deepEqual(cards.map(card => card.textContent), ["₹42.5", "₹100", "₹57.5", "₹0", "₹-25"]);
-    assert.equal(amount.textContent, "••••");
-    transactionButton.onclick();
-    assert.equal(amount.textContent, "₹42.5");
+    const button = element();
+    const display = new AmountVisibility(button, "all amounts");
+    const totals = [element(), element(), element()];
+    [42.5, 100, 57.5].forEach((value, index) => display.set(totals[index], value));
+    const transaction = element(), percentage = element();
+    percentage.dataset.format = "percentage";
+    display.set(transaction, "42.50");
+    display.set(percentage, "42.5");
+    button.onclick();
+    for (const field of [...totals, transaction, percentage]) {
+        assert.equal(field.textContent, "••••");
+        assert.equal(field.children[0].getAttribute("aria-label"), "Amount hidden");
+    }
+    assert.equal(button.getAttribute("aria-label"), "Show all amounts");
+    assert.equal(button.dataset.hidden, "true");
+    button.onclick();
+    assert.deepEqual(totals.map(field => field.textContent), ["₹42.5", "₹100", "₹57.5"]);
+    assert.equal(transaction.textContent, "₹42.5");
+    assert.equal(percentage.textContent, "42.5%");
+    assert.equal(button.getAttribute("aria-label"), "Hide all amounts");
 });
 
 test("newly filtered or loaded amounts remain masked without retaining removed cells", () => {
     const { AmountVisibility } = dashboard();
     const button = element();
-    const display = new AmountVisibility(button, "transaction amounts");
+    const display = new AmountVisibility(button, "all amounts");
+    const overview = element();
+    display.set(overview, "150.00");
     const previous = element(), next = element();
     display.set(previous, "42.50");
     button.onclick();
-    display.clear();
+    display.remove(previous);
     display.set(next, "99.75");
     assert.equal(next.textContent, "••••");
     assert.equal(display.visible, false);
     button.onclick();
     assert.equal(next.textContent, "₹99.75");
     assert.equal(previous.textContent, "••••");
-    assert.equal(display.amounts.size, 1);
+    assert.equal(overview.textContent, "₹150");
+    assert.equal(display.amounts.size, 2);
 });
 
 test("hiding totals also hides the net cashflow colour cue", () => {
@@ -665,4 +666,49 @@ test("HTTP errors are rejected before response bodies are rendered", async () =>
     const { fetchJSON, context } = dashboard();
     context.fetch = async () => ({ ok: false, status: 500 });
     await assert.rejects(fetchJSON("/overview"), /Request failed: 500/);
+});
+
+test("background refresh preserves its view flag through success, failure and ordinary reloads", async () => {
+    const { DashboardLoader } = dashboard();
+    const states = [];
+    let fail = false;
+    const loader = new DashboardLoader(async () => {
+        if (fail) throw new Error("Synthetic background failure");
+        return [];
+    }, state => states.push(state));
+    await loader.load("years=2001", { preserveView: true });
+    assert.deepEqual(states.map(state => [state.status, state.preserveView]), [["loading", true], ["ready", true]]);
+    fail = true;
+    await loader.load("years=2001", { preserveView: true });
+    assert.equal(states.at(-1).status, "error");
+    assert.equal(states.at(-1).preserveView, true);
+    fail = false;
+    await loader.load("years=2002");
+    assert.equal(states.at(-1).preserveView, false);
+});
+
+test("refresh keeps a visible row anchored, including when the edited row disappears", () => {
+    const { preserveTransactionViewport } = dashboard();
+    for (const removed of [false, true]) {
+        const view = { scrollX: 0, scrollY: 1000, innerHeight: 800,
+            scrollTo({ left, top }) { this.scrollX = left; this.scrollY = top; } };
+        const trigger = { classList: { contains: () => true }, closest: () => ({ dataset: { id: "first" } }) };
+        let focused;
+        const row = (id, y) => ({ dataset: { id }, y,
+            getBoundingClientRect() { return { top: this.y - view.scrollY, bottom: this.y - view.scrollY + 60 }; },
+            querySelector() { return { focus: options => { focused = options; } }; } });
+        let rows = [row("first", 1120), row("next", 1180)];
+        const tableScroll = { scrollLeft: 80 };
+        const document = { defaultView: view, activeElement: trigger,
+            querySelector(selector) { return selector === ".page-header" ? { getBoundingClientRect: () => ({ bottom: 90 }) } : tableScroll; },
+            querySelectorAll() { return rows; } };
+        const expectedTop = rows[removed ? 1 : 0].getBoundingClientRect().top;
+        const restore = preserveTransactionViewport(document);
+        rows = removed ? [row("next", 1220)] : [row("first", 1200), row("next", 1260)];
+        tableScroll.scrollLeft = 0;
+        restore();
+        assert.equal(rows[0].getBoundingClientRect().top, expectedTop);
+        assert.equal(tableScroll.scrollLeft, 80);
+        if (!removed) assert.equal(focused.preventScroll, true);
+    }
 });

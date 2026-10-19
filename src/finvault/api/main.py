@@ -130,7 +130,7 @@ def settings_page():
 
 @app.get("/analysis")
 def analysis_page():
-    return RedirectResponse("/#analysis-heading")
+    return RedirectResponse("/#overview-heading")
 
 
 @app.get("/years")

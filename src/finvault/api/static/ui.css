@@ -22,7 +22,7 @@
     display: block; margin: 3px 0 0; color: var(--muted); font: 10px/1.4 var(--mono);
     letter-spacing: 2px; text-transform: uppercase; white-space: nowrap;
 }
-.page-nav { display: flex; gap: 20px; font: 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .7px; }
+.page-nav { display: flex; align-items: center; gap: 20px; font: 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .7px; }
 .page-nav a { display: inline-flex; align-items: center; gap: 5px; padding: 10px 0; color: var(--muted); text-decoration: none; }
 .page-nav a:hover { color: var(--yellow); }
 .page-header a:focus-visible { outline: 2px solid var(--yellow); outline-offset: 4px; }

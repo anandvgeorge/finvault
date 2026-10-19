@@ -76,8 +76,8 @@ transactions. Click a subcategory to narrow the list; **Clear ×** resets the
 category filter while keeping your selected dates.
 
 Analysis percentages use credits from **Income** and all its subcategories for
-the selected period. To use another main category, choose it under **Income main
-category** in Settings and save.
+the selected period. To use another main category, choose it under **Income used
+for category percentages** in Settings and save.
 
 In Settings, select **Preview**, then **Apply** to categorise existing
 Uncategorized transactions. Leave the month blank for all data, or select a month.
