@@ -198,13 +198,14 @@ class ApiTests(unittest.TestCase):
     def test_analysis_page_and_navigation_are_served(self):
         response = self.api.analysis_page()
         self.assertEqual(response.status_code, 307)
-        self.assertEqual(response.headers["location"], "/#analysis-heading")
+        self.assertEqual(response.headers["location"], "/#overview-heading")
         status, html = self.request("/", json_response=False)
         self.assertEqual(status, 200)
         self.assertIn('id="analysis-results"', html)
         self.assertIn('id="transactions-table"', html)
         self.assertEqual(html.count('class="period-selector"'), 1)
-        self.assertIn('href="#analysis-heading"', html)
+        self.assertIn('href="#calendar-heading"', html)
+        self.assertIn('href="#overview-heading"', html)
 
     def test_system_status_reports_only_metadata_and_the_running_commit(self):
         with patch.object(self.api.runtime_info, "commit_id", "a" * 40):

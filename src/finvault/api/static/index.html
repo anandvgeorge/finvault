@@ -191,21 +191,21 @@
             <div><h1 class="brand-name">FinVault</h1><p class="brand-caption">Personal finance</p></div>
         </a>
         <nav class="page-nav" aria-label="Main navigation">
+            <a href="#calendar-heading">Calendar</a>
             <a href="#overview-heading">Overview</a>
             <a href="#transactions-heading">Transactions</a>
-            <a href="#analysis-heading">Analysis</a>
             <a href="/settings">Settings ↗</a>
+            <button type="button" id="toggle-totals" class="visibility-toggle" aria-label="Hide all amounts" title="Hide all amounts" aria-controls="overview-summary analysis-results transactions-table" data-hidden="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                    <path class="eye-slash" d="M3 3 21 21" />
+                </svg>
+            </button>
         </nav>
     </header>
     <div class="section-heading">
-        <h2 id="overview-heading">Overview</h2>
-        <button type="button" id="toggle-totals" class="visibility-toggle" aria-label="Hide totals" title="Hide totals" aria-controls="overview-summary analysis-results" data-hidden="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-                <circle cx="12" cy="12" r="3" />
-                <path class="eye-slash" d="M3 3 21 21" />
-            </svg>
-        </button>
+        <h2 id="calendar-heading">Calendar</h2>
     </div>
     <section class="period-selector" aria-label="Filter by year and month">
         <div class="period-toolbar">
@@ -220,13 +220,15 @@
         </div>
     </section>
     <button type="button" id="retry" class="period-button retry-button" hidden>Try again</button>
+    <div class="section-heading" id="analysis-heading">
+        <h2 id="overview-heading">Overview</h2>
+    </div>
     <dl id="overview-summary" class="overview-summary" aria-label="Overall totals for the selected dates" aria-busy="true">
         <div class="overview-metric overview-credits"><dt>Credits</dt><dd id="total-credits">—</dd></div>
         <div class="overview-metric overview-debits"><dt>Debits</dt><dd id="total-debits">—</dd></div>
         <div class="overview-metric overview-net"><dt>Net cashflow</dt><dd id="net-cashflow">—</dd></div>
     </dl>
-    <section id="analysis-results" class="analysis-section" aria-labelledby="analysis-heading" aria-busy="true">
-        <div class="section-heading"><h2 id="analysis-heading">Main categories</h2></div>
+    <section id="analysis-results" class="analysis-section" aria-labelledby="overview-heading" aria-busy="true">
         <p id="income-note" class="analysis-help">Choose a card to see its subcategories and transactions.</p>
         <p id="analysis-message" class="analysis-empty" role="status">Loading categories…</p>
         <div id="group-cards" class="analysis-cards"></div>
@@ -249,13 +251,6 @@
     <section class="transactions" aria-labelledby="transactions-heading">
         <div class="section-heading">
             <h2 id="transactions-heading">Transactions</h2>
-            <button type="button" id="toggle-transaction-amounts" class="visibility-toggle" aria-label="Hide transaction amounts" title="Hide transaction amounts" aria-controls="transactions-table" data-hidden="false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
-                    <circle cx="12" cy="12" r="3" />
-                    <path class="eye-slash" d="M3 3 21 21" />
-                </svg>
-            </button>
         </div>
         <div class="transaction-filters" aria-label="Transaction filters">
             <div class="transaction-types" role="group" aria-label="Transaction type">
@@ -448,6 +443,29 @@
             return response.json();
         }
 
+        function preserveTransactionViewport(document) {
+            const view = document.defaultView;
+            const top = document.querySelector(".page-header").getBoundingClientRect().bottom;
+            const positions = Array.from(document.querySelectorAll("tr[data-id]"), row => ({
+                id: row.dataset.id, rect: row.getBoundingClientRect(),
+            })).filter(({ rect }) => rect.bottom > top && rect.top < view.innerHeight);
+            const scrollX = view.scrollX, scrollY = view.scrollY;
+            const tableScroll = document.querySelector(".table-scroll");
+            const horizontal = tableScroll.scrollLeft;
+            const active = document.activeElement;
+            const focusedRow = active?.closest("tr[data-id]")?.dataset.id;
+            const categoryFocused = active?.classList.contains("category-trigger");
+            return () => {
+                const rows = new Map(Array.from(document.querySelectorAll("tr[data-id]"), row => [row.dataset.id, row]));
+                const anchor = positions.find(position => rows.has(position.id));
+                const destination = anchor
+                    ? view.scrollY + rows.get(anchor.id).getBoundingClientRect().top - anchor.rect.top : scrollY;
+                view.scrollTo({ left: scrollX, top: destination, behavior: "instant" });
+                tableScroll.scrollLeft = horizontal;
+                if (categoryFocused) rows.get(focusedRow)?.querySelector(".category-trigger")?.focus({ preventScroll: true });
+            };
+        }
+
         class DashboardLoader {
             constructor(fetcher, onChange) {
                 this.fetcher = fetcher;
@@ -456,12 +474,12 @@
                 this.controller = null;
             }
 
-            async load(query) {
+            async load(query, { preserveView = false } = {}) {
                 if (this.controller) this.controller.abort();
                 const controller = new AbortController();
                 this.controller = controller;
                 const version = ++this.version;
-                this.onChange({ status: "loading" });
+                this.onChange({ status: "loading", preserveView });
                 const suffix = query ? `?${query}` : "";
                 try {
                     const [overview, transactions, summary] = await Promise.all([
@@ -469,11 +487,11 @@
                         this.fetcher(`/transactions${suffix}`, controller.signal),
                         this.fetcher(`/analysis/summary${suffix}`, controller.signal),
                     ]);
-                    if (version === this.version) this.onChange({ status: "ready", overview, transactions, summary });
+                    if (version === this.version) this.onChange({ status: "ready", overview, transactions, summary, preserveView });
                 } catch (error) {
                     if (version !== this.version) return;
                     controller.abort();
-                    this.onChange({ status: "error" });
+                    this.onChange({ status: "error", preserveView });
                 }
             }
         }
@@ -487,8 +505,8 @@
             const tbody = document.getElementById("transactions-body");
             const count = document.getElementById("transaction-count");
             const categoryStatus = document.getElementById("category-status");
-            const totalsVisibility = new AmountVisibility(document.getElementById("toggle-totals"), "totals");
-            const transactionVisibility = new AmountVisibility(document.getElementById("toggle-transaction-amounts"), "transaction amounts");
+            const amountVisibility = new AmountVisibility(document.getElementById("toggle-totals"), "all amounts");
+            const transactionAmounts = new Set();
             const debitFilters = document.getElementById("debit-filters");
             const typeButtons = new Map([
                 ["debit", document.getElementById("filter-debit")],
@@ -513,19 +531,24 @@
                 categoryStatus.textContent = pending ? "Saving…" : failed ? "Save failed" : "Saved";
                 categoryStatus.className = failed ? "category-status error" : "category-status";
                 categoryStatus.title = failed ? "Couldn’t save the category. Previous selection restored; try again." : "";
-                if (!pending && state.status !== "saving") void refresh();
+                if (!pending && state.status !== "saving") void refresh({ preserveView: true });
             });
             let loadedTransactions = null;
             let picker;
-            const analysis = new AnalysisView(document, totalsVisibility, () => {
+            const analysis = new AnalysisView(document, amountVisibility, () => {
                 if (loadedTransactions !== null) renderTransactions(loadedTransactions);
             });
             const summaryFields = ["total-debits", "total-credits", "net-cashflow"];
 
+            function clearTransactionAmounts() {
+                for (const cell of transactionAmounts) amountVisibility.remove(cell);
+                transactionAmounts.clear();
+            }
+
             function tableMessage(message) {
                 categoryMenu.close();
                 categoryControls.clear();
-                transactionVisibility.clear();
+                clearTransactionAmounts();
                 const row = document.createElement("tr");
                 row.className = "message-row";
                 const cell = document.createElement("td");
@@ -540,7 +563,7 @@
                 categoryMenu.close();
                 categoryControls.clear();
                 const transactions = transactionSort.apply(transactionFilters.apply(analysis.selection.apply(allTransactions)));
-                transactionVisibility.clear();
+                clearTransactionAmounts();
                 tbody.replaceChildren();
                 count.textContent = transactions.length === allTransactions.length
                     ? `${transactions.length.toLocaleString("en-IN")} transaction${transactions.length === 1 ? "" : "s"}`
@@ -561,7 +584,10 @@
                         const cell = document.createElement("td");
                         cell.className = `transaction-${columns[index]}`;
                         if (index === 0) renderTransactionDate(cell, value);
-                        else if (index === 2) transactionVisibility.set(cell, value);
+                        else if (index === 2) {
+                            amountVisibility.set(cell, value);
+                            transactionAmounts.add(cell);
+                        }
                         else if (index === 3) {
                             const badge = document.createElement("span");
                             badge.className = "transaction-badge";
@@ -669,22 +695,34 @@
             refreshSortControls();
 
             const loader = new DashboardLoader(fetchJSON, result => {
+                const restoreView = result.preserveView && loadedTransactions !== null
+                    ? preserveTransactionViewport(document) : null;
                 const loading = result.status === "loading";
                 overviewSummary.setAttribute("aria-busy", String(loading));
                 table.setAttribute("aria-busy", String(loading));
                 retry.hidden = result.status !== "error";
                 status.className = result.status === "error" ? "data-status error" : "data-status";
+                if (result.preserveView && loadedTransactions !== null && result.status !== "ready") {
+                    if (loading) status.textContent = "Updating totals…";
+                    else {
+                        renderTransactions(loadedTransactions);
+                        status.textContent = "Couldn’t refresh totals. Try again.";
+                    }
+                    restoreView?.();
+                    return;
+                }
                 if (result.status === "ready") {
                     for (const field of summaryFields) {
-                        totalsVisibility.set(document.getElementById(field), result.overview[field.replaceAll("-", "_")]);
+                        amountVisibility.set(document.getElementById(field), result.overview[field.replaceAll("-", "_")]);
                     }
                     loadedTransactions = result.transactions;
                     analysis.update({ status: "ready", summary: result.summary });
                     renderTransactions(loadedTransactions);
+                    restoreView?.();
                     status.textContent = "";
                 } else {
                     loadedTransactions = null;
-                    totalsVisibility.clear();
+                    amountVisibility.clear();
                     analysis.update(result);
                     for (const field of summaryFields) document.getElementById(field).textContent = "—";
                     delete document.getElementById("net-cashflow").dataset.direction;
@@ -694,9 +732,9 @@
                 }
             });
 
-            function refresh() {
-                retry.onclick = refresh;
-                return loader.load(picker.selection.query());
+            function refresh({ preserveView = false } = {}) {
+                retry.onclick = () => refresh({ preserveView });
+                return loader.load(picker.selection.query(), { preserveView });
             }
 
             async function loadYears() {
@@ -707,7 +745,7 @@
                     const [years, catalog] = await Promise.all([fetchJSON("/years"), fetchCategoryCatalog()]);
                     categoryCatalog = catalog;
                     categoryMenu.configure(catalog.groups, catalog.categoryGroups);
-                    picker = new PeriodPicker(document, years, refresh);
+                    picker = new PeriodPicker(document, years, () => refresh());
                     const loading = picker.refresh();
                     picker.revealSelectedMonths();
                     await loading;

@@ -92,8 +92,7 @@
         .add-category { display: grid; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--border); }
         .add-category .button { justify-self: end; }
         .add-group { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
-        .add-group summary { padding: 6px 0; color: var(--yellow); cursor: pointer; font-size: 12px; }
-        .group-create { display: grid; gap: 8px; margin-top: 10px; }
+        .group-create { display: grid; gap: 8px; }
         .group-create .button { justify-self: end; }
         .move-dialog { width: min(360px, calc(100vw - 28px)); max-height: calc(100dvh - 36px); padding: 20px; border: 1px solid var(--yellow); border-radius: 4px; background: var(--panel); color: var(--ink); font: 13px/1.6 var(--mono); box-shadow: 4px 4px 0 #090c08; }
         .move-dialog::backdrop { background: #080b07c9; }
@@ -213,13 +212,6 @@
                     <p id="category-feedback" class="sr-only" role="status" aria-live="polite"></p>
                     <div class="add-category">
                         <div>
-                            <label id="income-group-label" for="income-group">Income main category</label>
-                            <select id="income-group" aria-label="Income main category"><option value="">Automatic (Income)</option></select>
-                            <p class="field-help">Automatically uses Income, including all its subcategories. Choose another group to override, then save.</p>
-                        </div>
-                    </div>
-                    <div class="add-category">
-                        <div>
                             <label for="new-category">New category name</label>
                             <input id="new-category" type="text" maxlength="80" placeholder="New category name" autocomplete="off">
                         </div>
@@ -229,8 +221,7 @@
                         </div>
                         <button id="add-category" type="button" class="button">+ Add category</button>
                     </div>
-                    <details class="add-group">
-                        <summary>+ Add main category</summary>
+                    <div class="add-group">
                         <div class="group-create">
                             <div>
                                 <label for="new-group">Main category name</label>
@@ -239,7 +230,14 @@
                             <button id="add-group" type="button" class="button">+ Add main category</button>
                             <p class="field-help">Removing a main category moves its categories to Independent categories. Removing a category keeps its existing transaction assignments.</p>
                         </div>
-                    </details>
+                    </div>
+                    <div class="add-category">
+                        <div>
+                            <label id="income-group-label" for="income-group">Income used for category percentages</label>
+                            <select id="income-group" aria-label="Income used for category percentages"><option value="">Automatic (Income)</option></select>
+                            <p class="field-help">Percentages use credits from <strong>Income</strong> and its subcategories for the selected dates. Choose another group and save to change this.</p>
+                        </div>
+                    </div>
                     </div>
                 </section>
                 <section class="settings-panel" aria-labelledby="rules-heading">
@@ -864,7 +862,7 @@
                         const removeGroup = button("×", () => {
                             const label = session.draft.groups.find(group => group.id === section.id).label;
                             session.draft.removeGroup(section.id); renderCategories(); session.changed();
-                            document.querySelector(".add-group").open = true; newGroup.focus();
+                            newGroup.focus();
                             document.getElementById("category-feedback").textContent = `${label} removed. Its categories are now independent.`;
                         }, "remove group-remove");
                         removeGroup.setAttribute("aria-label", `Remove main category: ${section.label}`);
@@ -970,7 +968,6 @@
                 try {
                     const group = session.draft.addGroup(newGroup.value); newGroup.value = "";
                     renderCategories(); refreshGroupChoices(group.id); session.changed();
-                    document.querySelector(".add-group").open = false;
                     categories.querySelector(`[data-group-id="${group.id}"] .group-name`).focus();
                 } catch (error) { session.error(error.message); newGroup.focus(); }
             };
