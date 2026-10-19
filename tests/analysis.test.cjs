@@ -182,7 +182,8 @@ test("expanding subcategory cards preserves shared masking, totals, selection an
     groupButton.onclick();
     assert.equal(groupButton.getAttribute("aria-pressed"), "true");
     assert.equal(get("subcategory-section").hidden, false);
-    assert.equal(get("subcategory-cards").children.length, 2);
+    assert.equal(get("subcategory-cards").children.length, 1);
+    assert.doesNotMatch(get("subcategory-cards").textContent, /Unused/);
     assert.match(get("subcategory-cards").textContent, /42.5%/);
     const shop = get("subcategory-cards").children[0].children[0].children[0];
     shop.onclick();
@@ -201,6 +202,14 @@ test("expanding subcategory cards preserves shared masking, totals, selection an
     view.update({ status: "ready", summary: data });
     assert.equal(view.selection.current.kind, "group");
     assert.doesNotMatch(get("subcategory-cards").textContent, /[₹%]/);
+    const zeroAmounts = summary();
+    zeroAmounts.groups[0].total_debits = "0.00";
+    zeroAmounts.groups[0].categories[0].total_debits = "0.00";
+    view.update({ status: "ready", summary: zeroAmounts });
+    assert.equal(get("group-cards").children.length, 1);
+    assert.equal(get("group-cards").children[0].children[0].children[0].getAttribute("aria-pressed"), "true");
+    assert.match(get("subcategory-cards").textContent, /No subcategory amounts for the selected dates/);
+    assert.doesNotMatch(get("subcategory-cards").textContent, /Example shop|Unused/);
     get("clear-category-selection").onclick();
     assert.equal(get("subcategory-section").hidden, true);
     get("toggle-totals").onclick();

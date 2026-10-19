@@ -182,7 +182,9 @@ class AnalysisView {
         if (!selectedGroup) return;
         this.document.getElementById("subcategory-heading").textContent = `${selectedGroup.label} subcategories`;
         this.document.getElementById("all-subcategories").setAttribute("aria-pressed", String(current.kind === "group"));
-        for (const category of selectedGroup.categories) {
+        const categories = selectedGroup.categories.filter(category =>
+            Number(category.total_debits) > 0 || Number(category.total_credits) > 0);
+        for (const category of categories) {
             const card = this.card(category, true, "details", category.id,
                 () => this.selection.toggleCategory(category.id, selectedGroup.id));
             const selected = current.kind === "category" && current.id === category.id;
@@ -190,7 +192,8 @@ class AnalysisView {
             this.buttons.details.get(category.id).button.setAttribute("aria-pressed", String(selected));
             this.details.appendChild(card);
         }
-        if (!selectedGroup.categories.length) this.details.appendChild(this.node("p", "analysis-empty", "No subcategories in this group."));
+        if (!categories.length) this.details.appendChild(this.node("p", "analysis-empty",
+            selectedGroup.categories.length ? "No subcategory amounts for the selected dates." : "No subcategories in this group."));
     }
 
     update(result) {
