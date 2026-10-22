@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from finvault.database.database import Database
+from finvault.models.transaction import Transaction
 from tests.fixtures import email, transaction
 
 
@@ -82,6 +83,21 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.connection.execute(
             "SELECT email_id FROM transactions ORDER BY email_id"
         ).fetchall(), [("fixture-one",), ("fixture-two",)])
+
+    def test_transactions_without_email_are_independent_and_survive_reopening(self):
+        fields = vars(transaction()).copy()
+        del fields["email_id"]
+        first = Transaction(**fields)
+        self.assertIsNone(first.email_id)
+        self.database.save_transaction(first)
+        self.database.save_transaction(replace(first, amount=Decimal("10.25"), category="custom"))
+        self.database.save_email(email("fixture-pending"), "UPI")
+        reopened = Database(str(self.path))
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.connection.execute(
+            "SELECT amount, email_id, category FROM transactions ORDER BY id"
+        ).fetchall(), [("42.50", None, None), ("10.25", None, "custom")])
+        self.assertEqual([record.gmail_id for record, _ in reopened.get_emails(unprocessed_only=True)], ["fixture-pending"])
 
     def test_category_updates_and_clearing_survive_reopening_the_database(self):
         self.database.save_email(email(), "UPI")

@@ -44,7 +44,7 @@ class Database:
                 account TEXT NOT NULL,
                 source TEXT NOT NULL,
                 reference TEXT,
-                email_id TEXT NOT NULL UNIQUE,
+                email_id TEXT UNIQUE,
                 category TEXT,
                 FOREIGN KEY (email_id) REFERENCES emails(gmail_id)
             )

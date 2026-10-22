@@ -14,5 +14,5 @@ class Transaction:
     account: str
     source: str
     reference: str | None
-    email_id: str
+    email_id: str | None = None
     category: str | None = None
