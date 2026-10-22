@@ -10,11 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from finvault.analysis import summarize_groups
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
+from finvault.api.transactions import ManualTransactionCreate
 from finvault.backfill_categories import apply_categories, calendar_month, preview_categories
 from finvault.categories import CategoryConfigError, CategoryStore, TomlCategoryStore
 from finvault.category_matching import KeywordCategoryMatcher
-from finvault.database.database import Database
+from finvault.database.database import Database, ManualTransactionsUnavailable
 from finvault.models.category import Category, CategoryId, CategorySettings
+from finvault.models.transaction import Transaction
 from finvault.runtime import RuntimeInfo
 
 app = FastAPI()
@@ -276,6 +278,21 @@ def get_transactions(
         }
         for row in rows
     ]
+
+
+@app.post("/transactions", status_code=201)
+def create_manual_transaction(entry: ManualTransactionCreate, response: Response):
+    """Add a manual INR transaction. Naive date/times are interpreted as IST."""
+    response.headers["Cache-Control"] = "no-store"
+    if entry.category is not None and entry.category not in {category.id for category in category_settings().categories}:
+        raise HTTPException(status_code=422, detail="Unknown category")
+    try:
+        transaction_id = database.create_manual_transaction(Transaction(**entry.model_dump()))
+    except ManualTransactionsUnavailable:
+        raise HTTPException(status_code=409, detail="This database needs the manual-entry update before transactions can be added.") from None
+    except sqlite3.Error:
+        raise HTTPException(status_code=503, detail="Could not save the transaction. Try again.") from None
+    return {"id": transaction_id, **entry.model_dump(mode="json")}
 
 
 @app.patch("/transactions/{transaction_id}/category")
