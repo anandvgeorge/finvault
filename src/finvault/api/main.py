@@ -253,7 +253,8 @@ def get_transactions(
             account,
             source,
             reference,
-            category
+            category,
+            email_id IS NULL
         FROM transactions
         WHERE {where}
         ORDER BY transaction_date DESC
@@ -275,6 +276,7 @@ def get_transactions(
             "source": row[7],
             "reference": row[8],
             "category": row[9],
+            "is_manual": bool(row[10]),
         }
         for row in rows
     ]
@@ -292,7 +294,22 @@ def create_manual_transaction(entry: ManualTransactionCreate, response: Response
         raise HTTPException(status_code=409, detail="This database needs the manual-entry update before transactions can be added.") from None
     except sqlite3.Error:
         raise HTTPException(status_code=503, detail="Could not save the transaction. Try again.") from None
-    return {"id": transaction_id, **entry.model_dump(mode="json")}
+    return {"id": transaction_id, **entry.model_dump(mode="json"), "is_manual": True}
+
+
+@app.delete("/transactions/{transaction_id}")
+def delete_manual_transaction(transaction_id: Annotated[int, PathParameter(gt=0)], response: Response):
+    """Email-based transactions are protected even for direct API requests."""
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = database.delete_manual_transaction(transaction_id)
+    except sqlite3.Error:
+        raise HTTPException(status_code=503, detail="Could not delete the transaction. Try again.") from None
+    if result == "protected":
+        raise HTTPException(status_code=409, detail="Only manually entered transactions can be deleted.")
+    if result == "missing":
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"id": transaction_id, "deleted": True}
 
 
 @app.patch("/transactions/{transaction_id}/category")

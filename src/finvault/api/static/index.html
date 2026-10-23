@@ -339,6 +339,11 @@
             </div>
         </form>
     </dialog>
+    <dialog id="delete-transaction-dialog" class="manual-dialog manual-delete-dialog" aria-labelledby="delete-transaction-heading">
+        <div class="manual-heading"><h2 id="delete-transaction-heading">Delete manual transaction?</h2><p id="delete-transaction-description"></p><p>This permanently removes the entry and updates your totals.</p></div>
+        <p id="delete-transaction-error" class="manual-entry-error" role="status" aria-live="polite"></p>
+        <div class="manual-footer"><button id="cancel-delete-transaction" type="button" class="period-button" autofocus>Cancel</button><button id="confirm-delete-transaction" type="button" class="period-button manual-delete-confirm">Delete transaction</button></div>
+    </dialog>
     <script src="/static/ui.js"></script>
     <script src="/static/summary-controls.js"></script>
     <script src="/static/category-picker.js"></script>
@@ -649,6 +654,15 @@
                             cell.appendChild(badge);
                         }
                         else cell.textContent = value;
+                        if (index === 1 && transaction.is_manual === true) {
+                            const remove = document.createElement("button");
+                            remove.type = "button"; remove.className = "manual-delete-button";
+                            remove.setAttribute("aria-label", `Delete manual transaction: ${transaction.merchant}`);
+                            remove.title = "Delete manual transaction";
+                            remove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>';
+                            remove.onclick = () => manualDeletion.open(transaction);
+                            cell.appendChild(remove);
+                        }
                         row.appendChild(cell);
                     }
                     const cell = document.createElement("td");
@@ -822,6 +836,36 @@
                 restoreView?.();
             }
 
+            async function refreshAfterManualChange() {
+                const years = await fetchJSON("/years");
+                if (!picker) await loadYears();
+                else {
+                    const orderedYears = [...new Set(years)].sort((a, b) => b - a);
+                    if (orderedYears.join() !== picker.selection.years.join()) {
+                        const restoreView = loadedTransactions !== null ? preserveTransactionViewport(document) : null;
+                        const selected = picker.selection.selected;
+                        picker = new PeriodPicker(document, years, () => {});
+                        picker.selection.selected = new Map([...selected]
+                            .filter(([year]) => orderedYears.includes(year))
+                            .map(([year, months]) => [year, new Set(months)]));
+                        picker.refresh();
+                        picker.onChange = () => refresh();
+                        restoreView?.();
+                    }
+                    await refresh({ preserveView: true });
+                }
+                if (status.classList.contains("error") || table.getAttribute("aria-busy") === "true") {
+                    throw new Error("Dashboard refresh incomplete");
+                }
+            }
+
+            const manualDeletion = initializeManualDeletion(document, {
+                onMessage: manualEntryMessage,
+                async onDeleted() {
+                    await refreshAfterManualChange();
+                },
+            });
+
             initializeManualEntry(document, {
                 async getCatalog() {
                     const catalog = await fetchCategoryCatalog();
@@ -831,26 +875,7 @@
                 },
                 onMessage: manualEntryMessage,
                 async onSaved(saved) {
-                    const years = await fetchJSON("/years");
-                    if (!picker) await loadYears();
-                    else {
-                        const orderedYears = [...new Set(years)].sort((a, b) => b - a);
-                        if (orderedYears.join() !== picker.selection.years.join()) {
-                            const restoreView = loadedTransactions !== null ? preserveTransactionViewport(document) : null;
-                            const selected = picker.selection.selected;
-                            picker = new PeriodPicker(document, years, () => {});
-                            picker.selection.selected = new Map([...selected]
-                                .filter(([year]) => orderedYears.includes(year))
-                                .map(([year, months]) => [year, new Set(months)]));
-                            picker.refresh();
-                            picker.onChange = () => refresh();
-                            restoreView?.();
-                        }
-                        await refresh({ preserveView: true });
-                    }
-                    if (status.classList.contains("error") || table.getAttribute("aria-busy") === "true") {
-                        throw new Error("Dashboard refresh incomplete");
-                    }
+                    await refreshAfterManualChange();
                     const visible = loadedTransactions?.some(transaction => transaction.id === saved.id)
                         && transactionFilters.apply(analysis.selection.apply([saved])).length > 0;
                     manualEntryMessage(visible ? "Transaction saved." : "Transaction saved. It is outside the current filters.");

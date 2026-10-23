@@ -343,3 +343,41 @@ function initializeManualEntry(document, { getCatalog, onSaved, onMessage }) {
     };
     state();
 }
+
+function initializeManualDeletion(document, { onMessage, onDeleted }) {
+    const dialog = document.getElementById("delete-transaction-dialog");
+    const cancel = document.getElementById("cancel-delete-transaction");
+    const confirm = document.getElementById("confirm-delete-transaction");
+    const error = document.getElementById("delete-transaction-error");
+    let transaction = null, busy = false;
+    cancel.onclick = () => { if (!busy) dialog.close(); };
+    dialog.oncancel = event => { if (busy) event.preventDefault(); };
+    confirm.onclick = async () => {
+        if (busy || !transaction) return;
+        busy = true; confirm.disabled = cancel.disabled = true;
+        confirm.textContent = "Deleting…"; error.textContent = "";
+        try {
+            const response = await fetch(`/transactions/${transaction.id}`, { method: "DELETE", cache: "no-store" });
+            if (!response.ok) {
+                let detail;
+                try { detail = (await response.json()).detail; } catch {}
+                throw new Error(typeof detail === "string" ? detail : "Couldn’t delete the transaction. Try again.");
+            }
+            dialog.close();
+            onMessage("Transaction deleted. Updating dashboard…");
+            try { await onDeleted(); onMessage("Transaction deleted."); }
+            catch { onMessage("Transaction deleted. Refresh the page to update the dashboard."); }
+        } catch (failure) {
+            error.textContent = failure instanceof TypeError
+                ? "Connection lost. Refresh the dashboard to check whether the entry was deleted." : failure.message;
+        } finally {
+            busy = false; confirm.disabled = cancel.disabled = false; confirm.textContent = "Delete transaction";
+        }
+    };
+    return { open(entry) {
+        if (busy || entry.is_manual !== true) return;
+        transaction = entry; error.textContent = "";
+        document.getElementById("delete-transaction-description").textContent = `${entry.merchant} · ${entry.transaction_date.slice(0, 10)}`;
+        dialog.showModal(); cancel.focus();
+    } };
+}

@@ -116,6 +116,22 @@ class ApiTests(unittest.TestCase):
         self.database.connection.execute("UPDATE emails SET body_text = '' WHERE gmail_id = 'fixture-empty'")
         self.database.connection.commit()
 
+    def test_delete_manual_transaction_protects_email_rows_and_updates_totals(self):
+        self.save_transaction("fixture-protected")
+        status, manual = self.request("/transactions", method="POST", body=self.manual_entry())
+        self.assertEqual(status, 201)
+        protected = next(row for row in self.api.get_transactions() if not row["is_manual"])
+        self.assertEqual(self.request(f'/transactions/{protected["id"]}', method="DELETE")[0], 409)
+        before = self.api.get_overview()["total_debits"]
+        self.assertEqual(self.request(f'/transactions/{manual["id"]}', method="DELETE"), (200, {"id": manual["id"], "deleted": True}))
+        self.assertAlmostEqual(self.api.get_overview()["total_debits"], before - 12.30)
+        self.assertEqual(self.api.get_transactions(), [protected])
+        self.assertEqual(self.database.connection.execute("SELECT COUNT(*) FROM emails").fetchone()[0], 1)
+        self.assertEqual(self.request(f'/transactions/{manual["id"]}', method="DELETE")[0], 404)
+        self.assertEqual(self.request("/transactions/0", method="DELETE")[0], 422)
+        with patch.object(self.database, "delete_manual_transaction", side_effect=sqlite3.OperationalError("synthetic")):
+            self.assertEqual(self.request("/transactions/1", method="DELETE")[0], 503)
+
     def manual_entry(self, **overrides):
         return {"amount": "12.30", "transaction_type": "debit", "merchant": "Example Shop",
                 "transaction_date": "2001-01-02T10:30:00", **overrides}
@@ -133,7 +149,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body, {
             "id": 2, "amount": "12.30", "transaction_type": "debit",
             "merchant": "Example café '); DROP TABLE transactions; --", "transaction_date": "2001-01-02T10:30:00+05:30",
-            "currency": "INR", "source": "UPI", "account": "Example account", "reference": "FIXTURE-MANUAL", "category": "necessary",
+            "currency": "INR", "source": "UPI", "account": "Example account", "reference": "FIXTURE-MANUAL", "category": "necessary", "is_manual": True,
         })
         self.assertEqual(self.database.connection.execute("SELECT email_id FROM transactions WHERE id=2").fetchone(), (None,))
         self.assertEqual(self.database.connection.execute("SELECT COUNT(*) FROM emails").fetchone(), (1,))
@@ -581,7 +597,7 @@ class ApiTests(unittest.TestCase):
             "id": 2, "transaction_date": newer.isoformat(), "amount": "42.50",
             "currency": "INR", "transaction_type": "debit", "merchant": "Example Merchant",
             "account": "HDFC XX0000", "source": "UPI", "reference": "FIXTURE-REFERENCE",
-            "category": None,
+            "category": None, "is_manual": False,
         })
 
     def test_available_years_are_distinct_newest_first_and_ignore_unprocessed_emails(self):

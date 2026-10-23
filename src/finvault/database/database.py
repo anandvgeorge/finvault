@@ -191,6 +191,16 @@ class Database:
             cursor = self._insert_transaction(connection, transaction, ignore_existing=False)
             return cursor.lastrowid
 
+    def delete_manual_transaction(self, transaction_id: int) -> str:
+        """Delete only rows without an email link, on an independent connection."""
+        uri = self.db_path.resolve().as_uri() + "?mode=rw"
+        with closing(sqlite3.connect(uri, uri=True, timeout=10)) as connection, connection:
+            cursor = connection.execute("DELETE FROM transactions WHERE id = ? AND email_id IS NULL", (transaction_id,))
+            if cursor.rowcount:
+                return "deleted"
+            exists = connection.execute("SELECT 1 FROM transactions WHERE id = ?", (transaction_id,)).fetchone()
+            return "protected" if exists else "missing"
+
     def update_transaction_category(self, transaction_id: int, category: str | None) -> bool:
         """Persist a category, returning whether the transaction exists."""
         cursor = self.connection.execute(
