@@ -1,6 +1,8 @@
 """Persistence checks using temporary SQLite files, never the real database."""
 
 import tempfile
+import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -8,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from finvault.database.database import Database
+from finvault.models.transaction import Transaction
 from tests.fixtures import email, transaction
 
 
@@ -82,6 +85,61 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.connection.execute(
             "SELECT email_id FROM transactions ORDER BY email_id"
         ).fetchall(), [("fixture-one",), ("fixture-two",)])
+
+    def test_transactions_without_email_are_independent_and_survive_reopening(self):
+        fields = vars(transaction()).copy()
+        del fields["email_id"]
+        first = Transaction(**fields)
+        self.assertIsNone(first.email_id)
+        self.database.save_transaction(first)
+        self.database.save_transaction(replace(first, amount=Decimal("10.25"), category="custom"))
+        self.database.save_email(email("fixture-pending"), "UPI")
+        reopened = Database(str(self.path))
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.connection.execute(
+            "SELECT amount, email_id, category FROM transactions ORDER BY id"
+        ).fetchall(), [("42.50", None, None), ("10.25", None, "custom")])
+        self.assertEqual([record.gmail_id for record, _ in reopened.get_emails(unprocessed_only=True)], ["fixture-pending"])
+
+    def test_manual_creation_returns_distinct_ids_and_leaves_emails_and_metadata_unchanged(self):
+        self.database.save_email(email(), "UPI")
+        self.database.save_transaction(transaction())
+        self.database.record_ingestion_completed()
+        before_emails = self.database.connection.execute("SELECT * FROM emails").fetchall()
+        before_status = self.database.runtime_status()
+        manual = transaction(email_id=None, source="Cash", account="", reference=None)
+        first = self.database.create_manual_transaction(manual)
+        second = self.database.create_manual_transaction(manual)
+        self.assertNotEqual(first, second)
+        self.assertEqual(self.database.connection.execute(
+            "SELECT email_id, source, account FROM transactions WHERE id IN (?, ?) ORDER BY id", (first, second),
+        ).fetchall(), [(None, "Cash", ""), (None, "Cash", "")])
+        self.assertEqual(self.database.connection.execute("SELECT * FROM emails").fetchall(), before_emails)
+        self.assertEqual(self.database.runtime_status(), before_status)
+        self.assertEqual(self.database.get_emails(unprocessed_only=True), [])
+        with self.assertRaises(ValueError):
+            self.database.create_manual_transaction(transaction())
+
+    def test_failed_manual_insert_rolls_back_without_creating_a_partial_record(self):
+        self.database.connection.execute("""
+            CREATE TRIGGER reject_manual BEFORE INSERT ON transactions
+            WHEN NEW.email_id IS NULL BEGIN SELECT RAISE(ABORT, 'Synthetic insert failure'); END
+        """)
+        self.database.connection.commit()
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.database.create_manual_transaction(transaction(email_id=None))
+        self.assertEqual(self.database.connection.execute("SELECT COUNT(*) FROM transactions").fetchone(), (0,))
+        self.assertEqual(self.database.get_emails(), [])
+
+    def test_concurrent_manual_saves_return_each_transactions_own_id(self):
+        def create(number):
+            merchant = f"Example purchase {number}"
+            identifier = self.database.create_manual_transaction(transaction(email_id=None, merchant=merchant))
+            return identifier, merchant
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            saved = list(executor.map(create, range(12)))
+        self.assertEqual(len({identifier for identifier, _ in saved}), 12)
+        self.assertEqual(dict(self.database.connection.execute("SELECT id, merchant FROM transactions")), dict(saved))
 
     def test_category_updates_and_clearing_survive_reopening_the_database(self):
         self.database.save_email(email(), "UPI")

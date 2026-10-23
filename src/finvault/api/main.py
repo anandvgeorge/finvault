@@ -10,11 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from finvault.analysis import summarize_groups
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
+from finvault.api.transactions import ManualTransactionCreate
 from finvault.backfill_categories import apply_categories, calendar_month, preview_categories
 from finvault.categories import CategoryConfigError, CategoryStore, TomlCategoryStore
 from finvault.category_matching import KeywordCategoryMatcher
-from finvault.database.database import Database
+from finvault.database.database import Database, ManualTransactionsUnavailable
 from finvault.models.category import Category, CategoryId, CategorySettings
+from finvault.models.transaction import Transaction
 from finvault.runtime import RuntimeInfo
 
 app = FastAPI()
@@ -251,7 +253,8 @@ def get_transactions(
             account,
             source,
             reference,
-            category
+            category,
+            email_id IS NULL
         FROM transactions
         WHERE {where}
         ORDER BY transaction_date DESC
@@ -273,9 +276,40 @@ def get_transactions(
             "source": row[7],
             "reference": row[8],
             "category": row[9],
+            "is_manual": bool(row[10]),
         }
         for row in rows
     ]
+
+
+@app.post("/transactions", status_code=201)
+def create_manual_transaction(entry: ManualTransactionCreate, response: Response):
+    """Add a manual INR transaction. Naive date/times are interpreted as IST."""
+    response.headers["Cache-Control"] = "no-store"
+    if entry.category is not None and entry.category not in {category.id for category in category_settings().categories}:
+        raise HTTPException(status_code=422, detail="Unknown category")
+    try:
+        transaction_id = database.create_manual_transaction(Transaction(**entry.model_dump()))
+    except ManualTransactionsUnavailable:
+        raise HTTPException(status_code=409, detail="This database needs the manual-entry update before transactions can be added.") from None
+    except sqlite3.Error:
+        raise HTTPException(status_code=503, detail="Could not save the transaction. Try again.") from None
+    return {"id": transaction_id, **entry.model_dump(mode="json"), "is_manual": True}
+
+
+@app.delete("/transactions/{transaction_id}")
+def delete_manual_transaction(transaction_id: Annotated[int, PathParameter(gt=0)], response: Response):
+    """Email-based transactions are protected even for direct API requests."""
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = database.delete_manual_transaction(transaction_id)
+    except sqlite3.Error:
+        raise HTTPException(status_code=503, detail="Could not delete the transaction. Try again.") from None
+    if result == "protected":
+        raise HTTPException(status_code=409, detail="Only manually entered transactions can be deleted.")
+    if result == "missing":
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"id": transaction_id, "deleted": True}
 
 
 @app.patch("/transactions/{transaction_id}/category")

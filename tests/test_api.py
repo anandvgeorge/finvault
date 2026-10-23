@@ -3,6 +3,7 @@
 import asyncio
 import importlib.util
 import json
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -114,6 +115,116 @@ class ApiTests(unittest.TestCase):
         self.save_transaction("fixture-empty")
         self.database.connection.execute("UPDATE emails SET body_text = '' WHERE gmail_id = 'fixture-empty'")
         self.database.connection.commit()
+
+    def test_delete_manual_transaction_protects_email_rows_and_updates_totals(self):
+        self.save_transaction("fixture-protected")
+        status, manual = self.request("/transactions", method="POST", body=self.manual_entry())
+        self.assertEqual(status, 201)
+        protected = next(row for row in self.api.get_transactions() if not row["is_manual"])
+        self.assertEqual(self.request(f'/transactions/{protected["id"]}', method="DELETE")[0], 409)
+        before = self.api.get_overview()["total_debits"]
+        self.assertEqual(self.request(f'/transactions/{manual["id"]}', method="DELETE"), (200, {"id": manual["id"], "deleted": True}))
+        self.assertAlmostEqual(self.api.get_overview()["total_debits"], before - 12.30)
+        self.assertEqual(self.api.get_transactions(), [protected])
+        self.assertEqual(self.database.connection.execute("SELECT COUNT(*) FROM emails").fetchone()[0], 1)
+        self.assertEqual(self.request(f'/transactions/{manual["id"]}', method="DELETE")[0], 404)
+        self.assertEqual(self.request("/transactions/0", method="DELETE")[0], 422)
+        with patch.object(self.database, "delete_manual_transaction", side_effect=sqlite3.OperationalError("synthetic")):
+            self.assertEqual(self.request("/transactions/1", method="DELETE")[0], 503)
+
+    def manual_entry(self, **overrides):
+        return {"amount": "12.30", "transaction_type": "debit", "merchant": "Example Shop",
+                "transaction_date": "2001-01-02T10:30:00", **overrides}
+
+    def test_manual_creation_saves_without_email_and_uses_existing_dashboard_and_category_apis(self):
+        self.database.record_ingestion_completed()
+        before_status = self.database.runtime_status()
+        self.save_transaction("fixture-existing", amount=Decimal("5.00"))
+        original = self.api.get_transactions()
+        status, body = self.request("/transactions", method="POST", body=self.manual_entry(
+            amount="12.3", merchant="  Example café '); DROP TABLE transactions; --  ",
+            source="UPI", account="  Example account  ", reference="  FIXTURE-MANUAL  ", category="necessary",
+        ))
+        self.assertEqual(status, 201)
+        self.assertEqual(body, {
+            "id": 2, "amount": "12.30", "transaction_type": "debit",
+            "merchant": "Example café '); DROP TABLE transactions; --", "transaction_date": "2001-01-02T10:30:00+05:30",
+            "currency": "INR", "source": "UPI", "account": "Example account", "reference": "FIXTURE-MANUAL", "category": "necessary", "is_manual": True,
+        })
+        self.assertEqual(self.database.connection.execute("SELECT email_id FROM transactions WHERE id=2").fetchone(), (None,))
+        self.assertEqual(self.database.connection.execute("SELECT COUNT(*) FROM emails").fetchone(), (1,))
+        self.assertEqual(self.database.runtime_status(), before_status)
+        self.assertIn(body, self.api.get_transactions())
+        self.assertIn(original[0], self.api.get_transactions())
+        self.assertEqual(self.api.get_overview()["total_debits"], 17.30)
+        status, analysis = self.request("/analysis/summary")
+        self.assertEqual(status, 200)
+        necessary = next(group for group in analysis["groups"] if group["id"] == "necessary")
+        self.assertEqual(necessary["total_debits"], "12.30")
+        self.assertEqual(self.request("/transactions/2/category", method="PATCH", body={"category": "lifestyle"})[0], 200)
+        status, preview = self.request("/settings/categories/backfill/preview", method="POST", body={"source_categories": ["lifestyle"]})
+        self.assertEqual((status, preview["missing_body"], preview["changes"]), (200, 1, 0))
+
+    def test_manual_creation_defaults_and_timezone_conversion_preserve_calendar_filters(self):
+        for amount, timestamp in (("1", "2001-01-31T20:15:00Z"), ("1.00", "2001-02-01T01:45:00+05:30")):
+            status, body = self.request("/transactions", method="POST", body=self.manual_entry(
+                amount=amount, transaction_type="credit", transaction_date=timestamp,
+                account=None, reference=" ", category="salary",
+            ))
+            self.assertEqual(status, 201)
+            self.assertEqual(body["amount"], "1.00")
+            self.assertEqual(body["transaction_date"], "2001-02-01T01:45:00+05:30")
+            self.assertEqual((body["source"], body["account"], body["reference"]), ("Cash", "", None))
+        status, rows = self.request("/transactions", [("years", 2001), ("months", "2001-02")])
+        self.assertEqual((status, len(rows)), (200, 2))
+        self.assertEqual(len({row["id"] for row in rows}), 2)
+        self.assertEqual(self.request("/transactions", [("years", 2001), ("months", "2001-01")])[1], [])
+        self.assertEqual(self.api.get_overview()["total_credits"], 2.00)
+        self.assertEqual(self.database.get_emails(), [])
+        status, analysis = self.request("/analysis/summary")
+        self.assertEqual(analysis["income_total"], "2.00")
+        status, body = self.request("/transactions", method="POST", body=self.manual_entry())
+        self.assertEqual((status, body["category"]), (201, None))
+
+    def test_manual_creation_rejects_invalid_amounts_dates_categories_and_extra_fields_without_writes(self):
+        cases = [
+            {"amount": value} for value in ("0", "-1", "NaN", "Infinity", "1.001", "1000000000000000000", True)
+        ] + [
+            {"transaction_date": value} for value in ("2001-01-02", "not a date", 978307200)
+        ] + [
+            {"merchant": " "}, {"source": " "}, {"transaction_type": "transfer"},
+            {"category": "missing_category"}, {"currency": "USD"}, {"email_id": "fixture-spoof"}, {"id": 99},
+        ]
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                self.assertEqual(self.request("/transactions", method="POST", body=self.manual_entry(**overrides))[0], 422)
+        for field in ("amount", "transaction_type", "merchant", "transaction_date"):
+            payload = self.manual_entry(); del payload[field]
+            with self.subTest(missing=field):
+                self.assertEqual(self.request("/transactions", method="POST", body=payload)[0], 422)
+        self.assertEqual(self.api.get_transactions(), [])
+        self.assertEqual(self.database.get_emails(), [])
+
+    def test_manual_creation_handles_old_schema_missing_database_and_write_errors_safely(self):
+        legacy = self.database.db_path.with_name("legacy.db")
+        with sqlite3.connect(legacy) as connection:
+            connection.execute("CREATE TABLE transactions (email_id TEXT NOT NULL UNIQUE)")
+        with patch.object(self.database, "db_path", legacy):
+            status, body = self.request("/transactions", method="POST", body=self.manual_entry())
+        self.assertEqual(status, 409)
+        self.assertIn("manual-entry update", body["detail"])
+        missing = self.database.db_path.with_name("missing.db")
+        with patch.object(self.database, "db_path", missing):
+            self.assertEqual(self.request("/transactions", method="POST", body=self.manual_entry())[0], 503)
+        self.assertFalse(missing.exists())
+        self.database.connection.execute("""
+            CREATE TRIGGER reject_manual BEFORE INSERT ON transactions
+            BEGIN SELECT RAISE(ABORT, 'fictional private detail'); END
+        """)
+        self.database.connection.commit()
+        status, body = self.request("/transactions", method="POST", body=self.manual_entry())
+        self.assertEqual((status, body), (503, {"detail": "Could not save the transaction. Try again."}))
+        self.assertEqual(self.api.get_transactions(), [])
 
     def test_browser_backfill_preview_is_read_only_and_month_is_optional(self):
         self.backfill_fixture()
@@ -486,7 +597,7 @@ class ApiTests(unittest.TestCase):
             "id": 2, "transaction_date": newer.isoformat(), "amount": "42.50",
             "currency": "INR", "transaction_type": "debit", "merchant": "Example Merchant",
             "account": "HDFC XX0000", "source": "UPI", "reference": "FIXTURE-REFERENCE",
-            "category": None,
+            "category": None, "is_manual": False,
         })
 
     def test_available_years_are_distinct_newest_first_and_ignore_unprocessed_emails(self):

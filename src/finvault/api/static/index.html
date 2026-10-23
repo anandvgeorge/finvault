@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/static/ui.css">
     <link rel="stylesheet" href="/static/summary-controls.css">
     <link rel="stylesheet" href="/static/analysis.css">
+    <link rel="stylesheet" href="/static/manual-entry.css">
     <style>
         :root {
             color-scheme: dark;
@@ -251,7 +252,9 @@
     <section class="transactions" aria-labelledby="transactions-heading">
         <div class="section-heading">
             <h2 id="transactions-heading">Transactions</h2>
+            <button type="button" id="add-transaction" class="period-button" aria-haspopup="dialog" aria-controls="manual-transaction-dialog" aria-label="Add transaction"><span class="manual-label-full">+ Add transaction</span><span class="manual-label-short" aria-hidden="true">+ Add</span></button>
         </div>
+        <p id="manual-transaction-feedback" class="manual-feedback" role="status" aria-live="polite"></p>
         <div class="transaction-filters" aria-label="Transaction filters">
             <div class="transaction-types" role="group" aria-label="Transaction type">
                 <button type="button" id="filter-debit" class="period-button" aria-pressed="false" aria-controls="transactions-table">Debit</button>
@@ -286,10 +289,66 @@
             </table>
         </div>
     </section>
+    <dialog id="manual-transaction-dialog" class="manual-dialog" aria-labelledby="manual-transaction-heading" aria-describedby="manual-transaction-help">
+        <form id="manual-transaction-form" novalidate>
+            <div class="manual-heading">
+                <h2 id="manual-transaction-heading">Add transaction</h2>
+                <p id="manual-transaction-help">Enter a transaction directly. No email is needed.</p>
+            </div>
+            <fieldset id="manual-transaction-fields" class="manual-fields">
+                <legend class="manual-sr-only">Transaction details</legend>
+                <div><label for="manual-amount">Amount (₹)</label><input id="manual-amount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" required autocomplete="off"></div>
+                <div><label id="manual-type-label" for="manual-type">Type</label><select id="manual-type" name="transaction_type" aria-label="Transaction type"><option value="debit">Debit</option><option value="credit">Credit</option></select></div>
+                <div class="manual-wide"><label for="manual-merchant">Merchant / description</label><input id="manual-merchant" name="merchant" type="text" maxlength="200" required autocomplete="off"></div>
+                <div class="manual-date-field">
+                    <label for="manual-date-trigger">Date and time · IST</label>
+                    <input id="manual-date" name="transaction_date" type="hidden" hidden>
+                    <button id="manual-date-trigger" class="manual-date-trigger" type="button" aria-expanded="false" aria-controls="manual-calendar">
+                        <span id="manual-date-value">Choose date and time</span>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"></rect><path d="M7 3v4m10-4v4M3 11h18"></path></svg>
+                    </button>
+                    <fieldset id="manual-calendar" class="manual-calendar" popover="manual" hidden disabled>
+                        <legend class="manual-sr-only">Choose date and time in IST</legend>
+                        <div class="manual-calendar-header">
+                            <button id="manual-calendar-previous" type="button" class="manual-calendar-nav" aria-label="Previous month">‹</button>
+                            <span id="manual-calendar-month" aria-live="polite"></span>
+                            <input id="manual-calendar-year" class="manual-calendar-year" type="number" min="1" max="9999" step="1" required aria-label="Calendar year" inputmode="numeric">
+                            <button id="manual-calendar-next" type="button" class="manual-calendar-nav" aria-label="Next month">›</button>
+                        </div>
+                        <div class="manual-calendar-weekdays" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+                        <div id="manual-calendar-days" class="manual-calendar-days" role="group" aria-label="Choose a date"></div>
+                        <div class="manual-calendar-time">
+                            <span>Time · IST<br><small>24-hour</small></span>
+                            <input id="manual-calendar-hour" type="number" min="0" max="23" step="1" required inputmode="numeric" aria-label="Hour (0 to 23)">
+                            <span aria-hidden="true">:</span>
+                            <input id="manual-calendar-minute" type="number" min="0" max="59" step="1" required inputmode="numeric" aria-label="Minute (0 to 59)">
+                        </div>
+                        <div class="manual-calendar-actions"><button id="manual-calendar-today" type="button" class="period-button">Today</button><button id="manual-calendar-done" type="button" class="period-button">Done</button></div>
+                    </fieldset>
+                </div>
+                <div><label id="manual-source-label" for="manual-source">Payment method</label><select id="manual-source" name="source" aria-label="Payment method"><option>Cash</option><option>UPI</option><option>Credit card</option><option>Debit card</option><option>Bank transfer</option><option>Other</option></select></div>
+                <div class="manual-wide"><label id="manual-category-label" for="manual-category">Category</label><select id="manual-category" name="category" aria-label="Transaction category"><option value="">Uncategorized</option></select></div>
+                <div><label for="manual-account">Account (optional)</label><input id="manual-account" name="account" type="text" maxlength="200" autocomplete="off"></div>
+                <div><label for="manual-reference">Reference (optional)</label><input id="manual-reference" name="reference" type="text" maxlength="200" autocomplete="off"></div>
+            </fieldset>
+            <p id="manual-entry-error" class="manual-entry-error" role="status" aria-live="polite"></p>
+            <div class="manual-footer">
+                <button id="manual-category-retry" type="button" class="period-button" hidden>Retry categories</button>
+                <button id="cancel-manual-transaction" type="button" class="period-button">Cancel</button>
+                <button id="save-manual-transaction" type="submit" class="period-button manual-save">Save transaction</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="delete-transaction-dialog" class="manual-dialog manual-delete-dialog" aria-labelledby="delete-transaction-heading">
+        <div class="manual-heading"><h2 id="delete-transaction-heading">Delete manual transaction?</h2><p id="delete-transaction-description"></p><p>This permanently removes the entry and updates your totals.</p></div>
+        <p id="delete-transaction-error" class="manual-entry-error" role="status" aria-live="polite"></p>
+        <div class="manual-footer"><button id="cancel-delete-transaction" type="button" class="period-button" autofocus>Cancel</button><button id="confirm-delete-transaction" type="button" class="period-button manual-delete-confirm">Delete transaction</button></div>
+    </dialog>
     <script src="/static/ui.js"></script>
     <script src="/static/summary-controls.js"></script>
     <script src="/static/category-picker.js"></script>
     <script src="/static/analysis.js"></script>
+    <script src="/static/manual-entry.js"></script>
     <script id="dashboard-script">
         "use strict";
 
@@ -595,6 +654,15 @@
                             cell.appendChild(badge);
                         }
                         else cell.textContent = value;
+                        if (index === 1 && transaction.is_manual === true) {
+                            const remove = document.createElement("button");
+                            remove.type = "button"; remove.className = "manual-delete-button";
+                            remove.setAttribute("aria-label", `Delete manual transaction: ${transaction.merchant}`);
+                            remove.title = "Delete manual transaction";
+                            remove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>';
+                            remove.onclick = () => manualDeletion.open(transaction);
+                            cell.appendChild(remove);
+                        }
                         row.appendChild(cell);
                     }
                     const cell = document.createElement("td");
@@ -761,6 +829,58 @@
                     retry.onclick = loadYears;
                 }
             }
+
+            function manualEntryMessage(message) {
+                const restoreView = loadedTransactions !== null ? preserveTransactionViewport(document) : null;
+                document.getElementById("manual-transaction-feedback").textContent = message;
+                restoreView?.();
+            }
+
+            async function refreshAfterManualChange() {
+                const years = await fetchJSON("/years");
+                if (!picker) await loadYears();
+                else {
+                    const orderedYears = [...new Set(years)].sort((a, b) => b - a);
+                    if (orderedYears.join() !== picker.selection.years.join()) {
+                        const restoreView = loadedTransactions !== null ? preserveTransactionViewport(document) : null;
+                        const selected = picker.selection.selected;
+                        picker = new PeriodPicker(document, years, () => {});
+                        picker.selection.selected = new Map([...selected]
+                            .filter(([year]) => orderedYears.includes(year))
+                            .map(([year, months]) => [year, new Set(months)]));
+                        picker.refresh();
+                        picker.onChange = () => refresh();
+                        restoreView?.();
+                    }
+                    await refresh({ preserveView: true });
+                }
+                if (status.classList.contains("error") || table.getAttribute("aria-busy") === "true") {
+                    throw new Error("Dashboard refresh incomplete");
+                }
+            }
+
+            const manualDeletion = initializeManualDeletion(document, {
+                onMessage: manualEntryMessage,
+                async onDeleted() {
+                    await refreshAfterManualChange();
+                },
+            });
+
+            initializeManualEntry(document, {
+                async getCatalog() {
+                    const catalog = await fetchCategoryCatalog();
+                    categoryCatalog = catalog;
+                    categoryMenu.configure(catalog.groups, catalog.categoryGroups);
+                    return catalog;
+                },
+                onMessage: manualEntryMessage,
+                async onSaved(saved) {
+                    await refreshAfterManualChange();
+                    const visible = loadedTransactions?.some(transaction => transaction.id === saved.id)
+                        && transactionFilters.apply(analysis.selection.apply([saved])).length > 0;
+                    manualEntryMessage(visible ? "Transaction saved." : "Transaction saved. It is outside the current filters.");
+                },
+            });
 
             return loadYears();
         }

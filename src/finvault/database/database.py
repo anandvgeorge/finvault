@@ -1,8 +1,13 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from datetime import datetime, timezone
 
 from finvault.models.email import Email
+
+
+class ManualTransactionsUnavailable(Exception):
+    """An existing database still requires its one-time nullable-email update."""
 
 
 class Database:
@@ -44,7 +49,7 @@ class Database:
                 account TEXT NOT NULL,
                 source TEXT NOT NULL,
                 reference TEXT,
-                email_id TEXT NOT NULL UNIQUE,
+                email_id TEXT UNIQUE,
                 category TEXT,
                 FOREIGN KEY (email_id) REFERENCES emails(gmail_id)
             )
@@ -138,10 +143,12 @@ class Database:
             for row in cursor.fetchall()
         ]
         
-    def save_transaction(self, transaction):
-        self.connection.execute(
-            """
-            INSERT OR IGNORE INTO transactions (
+    @staticmethod
+    def _insert_transaction(connection, transaction, *, ignore_existing: bool):
+        operation = "INSERT OR IGNORE" if ignore_existing else "INSERT"
+        return connection.execute(
+            f"""
+            {operation} INTO transactions (
                 amount,
                 currency,
                 transaction_type,
@@ -168,7 +175,31 @@ class Database:
                 transaction.category,
             ),
         )
+
+    def save_transaction(self, transaction):
+        self._insert_transaction(self.connection, transaction, ignore_existing=True)
         self.connection.commit()
+
+    def create_manual_transaction(self, transaction) -> int:
+        """Insert independently of other API requests, without an email record."""
+        if transaction.email_id is not None:
+            raise ValueError("Manual transactions cannot have an email link")
+        uri = self.db_path.resolve().as_uri() + "?mode=rw"
+        with closing(sqlite3.connect(uri, uri=True, timeout=10)) as connection, connection:
+            if any(row[1] == "email_id" and row[3] for row in connection.execute("PRAGMA table_info(transactions)")):
+                raise ManualTransactionsUnavailable
+            cursor = self._insert_transaction(connection, transaction, ignore_existing=False)
+            return cursor.lastrowid
+
+    def delete_manual_transaction(self, transaction_id: int) -> str:
+        """Delete only rows without an email link, on an independent connection."""
+        uri = self.db_path.resolve().as_uri() + "?mode=rw"
+        with closing(sqlite3.connect(uri, uri=True, timeout=10)) as connection, connection:
+            cursor = connection.execute("DELETE FROM transactions WHERE id = ? AND email_id IS NULL", (transaction_id,))
+            if cursor.rowcount:
+                return "deleted"
+            exists = connection.execute("SELECT 1 FROM transactions WHERE id = ?", (transaction_id,)).fetchone()
+            return "protected" if exists else "missing"
 
     def update_transaction_category(self, transaction_id: int, category: str | None) -> bool:
         """Persist a category, returning whether the transaction exists."""
