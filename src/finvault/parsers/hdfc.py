@@ -215,6 +215,11 @@ class HDFCParser:
         notices = (
             (r"\bOTP is\s+\d+\s+for txn\b", "payment OTP"),
             (
+                r"\bwe have received your request to transfer an amount of .+?"
+                r" through Foreign Outward Remittance module in NetBanking\b",
+                "pending remittance request",
+            ),
+            (
                 r"(?:^|[!.]\s+)(?:Your )?Available balance in (?:your )?account\b",
                 "balance update",
             ),
@@ -238,6 +243,30 @@ class HDFCParser:
 
     def _parse_upi(self, email: Email) -> Transaction | None:
         body = email.body_text
+
+        mandate_match = re.search(
+            r"Rs\.\s*(?P<amount>\d[\d,]*(?:\.\d+)?)\s+"
+            r"has been debited from HDFC Bank Account Number\s+"
+            r"(?P<account>[Xx*\d]+)\s+towards\s+(?P<merchant>.+?)\s+"
+            r"with UMRN\s+(?P<reference>\S+)\s+on\s+"
+            r"(?P<date>\d{2}-[A-Za-z]{3}-\d{4})",
+            body,
+            re.IGNORECASE,
+        )
+        if mandate_match:
+            return Transaction(
+                amount=Decimal(mandate_match.group("amount").replace(",", "")),
+                currency="INR",
+                transaction_type="debit",
+                merchant=mandate_match.group("merchant").strip(),
+                transaction_date=self._body_datetime(
+                    mandate_match.group("date"), "%d-%b-%Y", email,
+                ),
+                account=f"HDFC {mandate_match.group('account')}",
+                source="UPI",
+                reference=mandate_match.group("reference"),
+                email_id=email.gmail_id,
+            )
 
         amount_match = re.search(
             r"Rs\.(\d+(?:\.\d+)?)\s+is debited",
