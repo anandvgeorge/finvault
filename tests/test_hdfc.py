@@ -270,6 +270,9 @@ class HDFCParserTests(unittest.TestCase):
     def test_notices_are_skipped_without_creating_transactions(self):
         cases = (
             "HDFC BANK OTP is 000000 for txn of INR 100.00 at EXAMPLE on HDFC Bank card ending 0000.",
+            "HDFC BANK Dear Customer, we have received your request to transfer an amount of "
+            "EUR 100.00 to Example Beneficiary, through Foreign Outward Remittance module in "
+            "NetBanking. Your request will be processed by end of next working day.",
             "HDFC BANK Dear Customer, Greetings from HDFC Bank! Available balance in your account ending XX0000 is Rs. INR 1,000.00 as on 13-OCT-01.",
             "HDFC BANK Dear Customer, Greetings from HDFC Bank! Your available balance in account ending XX0000 is Rs. INR 1,000.00 as on 13-OCT-01.",
             "There is an upcoming E-mandate (Auto payment) of INR 42.50 for Example. Amount will be debited from your HDFC Bank Debit Card ending 0000 on 15/10/2001.",
@@ -437,6 +440,21 @@ class HDFCParserTests(unittest.TestCase):
         self.assertEqual(transaction.amount, Decimal("42.50"))
         self.assertEqual(transaction.merchant, "Example Merchant")
         self.assertIsNone(transaction.reference)
+
+    def test_upi_emandate_account_debit(self):
+        transaction = self.parse(
+            "Dear Customer, Rs.1,234.50 has been debited from HDFC Bank Account Number "
+            "XXXXXXXXXX2060 towards EXAMPLE CLEARING/123456 with UMRN "
+            "HDFC7013006220001637 on 13-Oct-2001. Assuring you of our best services.",
+            "UPI",
+        )
+        self.assertEqual(transaction.amount, Decimal("1234.50"))
+        self.assertEqual(transaction.merchant, "EXAMPLE CLEARING/123456")
+        self.assertEqual(transaction.account, "HDFC XXXXXXXXXX2060")
+        self.assertEqual(transaction.reference, "HDFC7013006220001637")
+        self.assertEqual(transaction.transaction_type, "debit")
+        self.assertEqual(transaction.source, "UPI")
+        self.assertEqual(transaction.transaction_date, datetime(2001, 10, 13, 23, tzinfo=IST))
 
     def test_empty_body_and_unsupported_source_produce_no_transaction(self):
         for source in ("UPI", "Credit card", "Debit card", "Credit", "Unknown"):
