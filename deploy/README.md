@@ -4,9 +4,10 @@
 read-only GitHub deploy key. It runs as the user who owns the systemd user
 services. GitHub does not connect to the Pi.
 
-Already using `current` and the deployment timer? Follow
-[Switch an existing service to the active release](#switch-an-existing-service-to-the-active-release)
-instead of repeating the bootstrap setup.
+For an existing installation receiving transaction comments, follow
+[Prepare an existing database for comments](#prepare-an-existing-database-for-comments)
+before the feature reaches `production`. For service configuration changes, see
+[Switch an existing service to the active release](#switch-an-existing-service-to-the-active-release).
 
 ## Expected layout
 
@@ -25,7 +26,7 @@ instead of repeating the bootstrap setup.
 The script fetches `production`, builds that exact commit using `uv sync --locked`,
 then pauses the ingestion timer and waits up to two minutes for any running
 ingestion service to finish. It switches `current`, restarts the UI, and checks
-the dashboard and overview API on `127.0.0.1:8000`. If startup fails, it restores
+the dashboard, overview API, and transactions API on `127.0.0.1:8000`. If startup fails, it restores
 the previous code and tries to restart it. The ingestion timer resumes if it
 was active before deployment. A file lock prevents overlapping deployments.
 An unchanged commit does not cause a rebuild or restart.
@@ -36,41 +37,116 @@ compatibility before enabling automatic deployment. Old releases are retained;
 monitor disk usage and remove unused releases when needed, keeping the active
 release and one working previous release.
 
-## One-time service setup
+## Prepare an existing database for comments
 
-Existing databases need a one-time comment column update before deploying the
-comments feature. Pause automatic deployments before promoting the release, take
-a SQLite backup, then run the following as the service owner on the Pi. This
-opens the existing database and safely skips the change if already applied.
+Application startup creates new tables with a nullable `comment TEXT` column.
+Existing tables require the one-time update below. Existing transactions receive
+`NULL`, and repeating this procedure safely skips an already present column.
+
+Run as the service owner on the Pi before merging the feature into the branch
+that CI promotes to `production`. Pause automatic checks first.
+
+```bash
+systemctl --user stop finvault-deploy.timer
+systemctl --user show finvault-deploy.service -p ActiveState -p SubState
+```
+
+Wait for any running deployment to finish. Stopping the timer leaves an already
+running service active.
+
+The following command creates a consistent SQLite backup while the application
+is running, then adds the column. It opens the existing runtime database with
+`mode=rw`, so an incorrect path fails instead of creating an empty database.
+The schema update waits up to 30 seconds for a write lock.
 
 ```bash
 "$HOME/.local/share/finvault/current/.venv/bin/python" - <<'PYTHON'
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 path = Path.home() / ".local/share/finvault/data/finvault.db"
 connection = sqlite3.connect(path.resolve().as_uri() + "?mode=rw", uri=True, timeout=30)
 try:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    backup = path.with_name(f"finvault-before-comments-{stamp}.db")
+    backup.touch(mode=0o600, exist_ok=False)
+    target = sqlite3.connect(backup)
+    try:
+        connection.backup(target)
+    finally:
+        target.close()
     with connection:
         connection.execute("BEGIN IMMEDIATE")
         columns = {row[1] for row in connection.execute("PRAGMA table_info(transactions)")}
         if "comment" not in columns:
             connection.execute("ALTER TABLE transactions ADD COLUMN comment TEXT")
     print("Comment column ready.")
+    print("Backup:", backup)
 finally:
     connection.close()
 PYTHON
 ```
 
-For an existing local database, use the same Python body with
+Continue after the command reports `Comment column ready.`. If it reports a
+locked database, let the active writer finish and rerun it before deployment.
+For bootstrap installations whose `current` symlink has not been created yet,
+use `$HOME/finvault/.venv/bin/python` for this command.
+
+After the tested feature reaches `production`, run the deployment and verify it.
+
+```bash
+systemctl --user start finvault-deploy.service
+systemctl --user show finvault-deploy.service -p Result -p ExecMainStatus
+systemctl --user is-active finvault-ui.service finvault-ingest.timer
+readlink -f "$HOME/.local/share/finvault/current"
+curl --fail --silent --show-error 'http://127.0.0.1:8000/transactions?period=all' > /dev/null
+```
+
+Expect `Result=success`, `ExecMainStatus=0`, and an active UI. The ingestion
+timer should be active if it was active before deployment. The final command
+also checks transaction loading explicitly because the first deployment of
+this release runs the previous release's deployment script and health checks.
+
+Open the dashboard, click a merchant, save a comment, and refresh. Confirm the
+comment appears below the merchant. Edit and clear it, and check a manual entry
+with an optional comment. On mobile, verify the same actions in the transaction
+card. Resume deployment checks after verification.
+
+```bash
+systemctl --user start finvault-deploy.timer
+systemctl --user list-timers --all finvault-deploy.timer
+```
+
+If deployment or verification fails, keep the deployment timer paused and inspect
+`journalctl --user -u finvault-deploy.service -u finvault-ui.service -n 100 --no-pager`.
+A `no such column: comment` error means the runtime database still needs the
+schema update. Apply it to the path above before retrying. If the new release
+is already active, restart `finvault-ui.service` and repeat verification, since
+the deploy script skips unchanged commits.
+
+Earlier application code can use the expanded database. Code rollback retains
+the column and saved comments. Restoring the backup also discards all database
+writes since it was taken, including newly ingested transactions.
+
+## Local verification
+
+For an existing local database, use the same Python body above with
 `path = Path("data/finvault.db")` and run it using `.venv/bin/python` from the
 project directory. Newly created databases include the column automatically.
-Application startup does not upgrade existing tables.
 
-After updating the schema, deploy with `systemctl --user start finvault-deploy.service`.
-Verify the service result and save/reload a comment before resuming
-`finvault-deploy.timer`. Earlier code can use the expanded database, and code
-rollback retains comments.
+```bash
+uv run --locked uvicorn finvault.api.main:app --reload
+```
+
+Open `http://127.0.0.1:8000` and verify save, refresh, edit, cancel, and clear.
+Run the database and API checks with temporary fixture databases.
+
+```bash
+.venv/bin/python -m unittest tests.test_database tests.test_api
+```
+
+## One-time service setup
 
 Run on the Pi. These commands assume the existing services currently use
 `~/finvault/.venv/bin/python` and work in `~/.local/share/finvault`.

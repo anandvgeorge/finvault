@@ -189,6 +189,12 @@ Unchanged commits skip deployment. Updates wait for ingestion to finish, restart
 the UI, and check startup; failed startup triggers a rollback to the previous
 code. Database changes are not rolled back.
 
+Existing databases need a one-time nullable `comment` column update before
+deploying transaction comments. Application startup creates the column for new
+databases. Follow the [backup and database preparation steps](deploy/README.md#prepare-an-existing-database-for-comments)
+before promoting this release. The guide also covers local verification and
+rollout checks.
+
 See the [Pi deployment guide](deploy/README.md) for setup commands.
 
 ## License

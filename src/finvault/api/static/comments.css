@@ -3,10 +3,13 @@
     text-align: left; font: inherit; max-width: 100%; overflow-wrap: anywhere;
 }
 .merchant-comment-trigger:hover, .transaction-comment:hover { text-decoration: underline; text-underline-offset: 3px; }
+.merchant-comment-trigger { vertical-align: top; }
 .transaction-comment { display: block; margin-top: 4px; color: var(--muted); font: 12px/1.5 system-ui, sans-serif; white-space: pre-wrap; }
 #transaction-comment { box-sizing: border-box; width: 100%; padding: 8px 10px; resize: vertical; border: 1px solid var(--border); border-radius: 3px; background: var(--canvas); color: var(--ink); font: 14px/1.5 var(--mono); }
 #transaction-comment:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+@media (max-width: 700px) {
+    td.transaction-merchant, td.transaction-amount { align-self: first baseline; }
+}
 @media (pointer: coarse) {
-    .merchant-comment-trigger, .transaction-comment { min-height: 44px; }
     #transaction-comment { font-size: 16px; }
 }
