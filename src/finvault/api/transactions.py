@@ -13,9 +13,20 @@ from finvault.models.category import CategoryId
 IST = ZoneInfo("Asia/Kolkata")
 Text = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=200)]
 RequiredText = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=200)]
+Comment = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=500)]
 
 
-class ManualTransactionCreate(BaseModel):
+class CommentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    comment: Comment | None
+
+    @field_validator("comment")
+    @classmethod
+    def empty_comment(cls, value):
+        return value or None
+
+
+class ManualTransactionCreate(CommentUpdate):
     model_config = ConfigDict(extra="forbid")
 
     amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2, allow_inf_nan=False)
@@ -27,6 +38,7 @@ class ManualTransactionCreate(BaseModel):
     account: Text = ""
     reference: Text | None = None
     category: CategoryId | None = None
+    comment: Comment | None = None
 
     @field_validator("amount")
     @classmethod

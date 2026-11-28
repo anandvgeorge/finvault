@@ -73,6 +73,10 @@ while time.monotonic() < deadline:
             overview = json.load(response)
             if response.status != 200 or "total_credits" not in overview:
                 raise ValueError("Overview is unavailable")
+        with opener.open("http://127.0.0.1:8000/transactions?period=all", timeout=2) as response:
+            transactions = json.load(response)
+            if response.status != 200 or not isinstance(transactions, list):
+                raise ValueError("Transactions are unavailable")
         raise SystemExit(0)
     except (OSError, ValueError):
         time.sleep(1)

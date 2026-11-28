@@ -38,6 +38,40 @@ release and one working previous release.
 
 ## One-time service setup
 
+Existing databases need a one-time comment column update before deploying the
+comments feature. Pause automatic deployments before promoting the release, take
+a SQLite backup, then run the following as the service owner on the Pi. This
+opens the existing database and safely skips the change if already applied.
+
+```bash
+"$HOME/.local/share/finvault/current/.venv/bin/python" - <<'PYTHON'
+import sqlite3
+from pathlib import Path
+
+path = Path.home() / ".local/share/finvault/data/finvault.db"
+connection = sqlite3.connect(path.resolve().as_uri() + "?mode=rw", uri=True, timeout=30)
+try:
+    with connection:
+        connection.execute("BEGIN IMMEDIATE")
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(transactions)")}
+        if "comment" not in columns:
+            connection.execute("ALTER TABLE transactions ADD COLUMN comment TEXT")
+    print("Comment column ready.")
+finally:
+    connection.close()
+PYTHON
+```
+
+For an existing local database, use the same Python body with
+`path = Path("data/finvault.db")` and run it using `.venv/bin/python` from the
+project directory. Newly created databases include the column automatically.
+Application startup does not upgrade existing tables.
+
+After updating the schema, deploy with `systemctl --user start finvault-deploy.service`.
+Verify the service result and save/reload a comment before resuming
+`finvault-deploy.timer`. Earlier code can use the expanded database, and code
+rollback retains comments.
+
 Run on the Pi. These commands assume the existing services currently use
 `~/finvault/.venv/bin/python` and work in `~/.local/share/finvault`.
 The clone, its working Python environment, OAuth files, database at

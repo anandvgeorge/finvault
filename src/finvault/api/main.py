@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from finvault.analysis import summarize_groups
 from finvault.api.filters import Months, Period, Years, transaction_date_filter
-from finvault.api.transactions import ManualTransactionCreate
+from finvault.api.transactions import CommentUpdate, ManualTransactionCreate
 from finvault.backfill_categories import apply_categories, calendar_month, preview_categories
 from finvault.categories import CategoryConfigError, CategoryStore, TomlCategoryStore
 from finvault.category_matching import KeywordCategoryMatcher
@@ -254,7 +254,8 @@ def get_transactions(
             source,
             reference,
             category,
-            email_id IS NULL
+            email_id IS NULL,
+            comment
         FROM transactions
         WHERE {where}
         ORDER BY transaction_date DESC
@@ -277,6 +278,7 @@ def get_transactions(
             "reference": row[8],
             "category": row[9],
             "is_manual": bool(row[10]),
+            "comment": row[11],
         }
         for row in rows
     ]
@@ -323,3 +325,19 @@ def update_transaction_category(
     if not database.update_transaction_category(transaction_id, update.category):
         raise HTTPException(status_code=404, detail="Transaction not found")
     return {"id": transaction_id, "category": update.category}
+
+
+@app.patch("/transactions/{transaction_id}/comment")
+def update_transaction_comment(
+    transaction_id: Annotated[int, PathParameter(gt=0)],
+    update: CommentUpdate,
+    response: Response,
+):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        found = database.update_transaction_comment(transaction_id, update.comment)
+    except sqlite3.Error:
+        raise HTTPException(status_code=503, detail="Could not save the comment. Try again.") from None
+    if not found:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"id": transaction_id, "comment": update.comment}

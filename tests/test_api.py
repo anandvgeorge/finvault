@@ -22,6 +22,31 @@ from tests.fixtures import email, transaction
 
 
 class ApiTests(unittest.TestCase):
+    def test_optional_comment_round_trip_and_validation(self):
+        from fastapi import Response
+        from pydantic import ValidationError
+        from finvault.api.transactions import CommentUpdate, ManualTransactionCreate
+
+        self.save_transaction("comment")
+        record = self.api.get_transactions()[0]
+        self.assertIsNone(record["comment"])
+        saved = self.api.update_transaction_comment(record["id"], CommentUpdate(comment="  Team lunch  "), Response())
+        self.assertEqual(saved["comment"], "Team lunch")
+        self.assertEqual(self.api.get_transactions()[0]["comment"], "Team lunch")
+        self.api.update_transaction_comment(record["id"], CommentUpdate(comment="  "), Response())
+        self.assertIsNone(self.api.get_transactions()[0]["comment"])
+        for value in [123, "x" * 501]:
+            with self.assertRaises(ValidationError):
+                CommentUpdate(comment=value)
+        with self.assertRaises(ValidationError):
+            CommentUpdate()
+        with self.assertRaises(HTTPException) as missing:
+            self.api.update_transaction_comment(99999, CommentUpdate(comment=None), Response())
+        self.assertEqual(missing.exception.status_code, 404)
+        entry = ManualTransactionCreate(amount="10", transaction_type="debit", merchant="Cafe", transaction_date="2026-11-28T12:00", comment="  Coffee with team  ")
+        created = self.api.create_manual_transaction(entry, Response())
+        self.assertEqual(created["comment"], "Coffee with team")
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -149,7 +174,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body, {
             "id": 2, "amount": "12.30", "transaction_type": "debit",
             "merchant": "Example café '); DROP TABLE transactions; --", "transaction_date": "2001-01-02T10:30:00+05:30",
-            "currency": "INR", "source": "UPI", "account": "Example account", "reference": "FIXTURE-MANUAL", "category": "necessary", "is_manual": True,
+            "currency": "INR", "source": "UPI", "account": "Example account", "reference": "FIXTURE-MANUAL", "category": "necessary", "is_manual": True, "comment": None,
         })
         self.assertEqual(self.database.connection.execute("SELECT email_id FROM transactions WHERE id=2").fetchone(), (None,))
         self.assertEqual(self.database.connection.execute("SELECT COUNT(*) FROM emails").fetchone(), (1,))
@@ -597,7 +622,7 @@ class ApiTests(unittest.TestCase):
             "id": 2, "transaction_date": newer.isoformat(), "amount": "42.50",
             "currency": "INR", "transaction_type": "debit", "merchant": "Example Merchant",
             "account": "HDFC XX0000", "source": "UPI", "reference": "FIXTURE-REFERENCE",
-            "category": None, "is_manual": False,
+            "category": None, "is_manual": False, "comment": None,
         })
 
     def test_available_years_are_distinct_newest_first_and_ignore_unprocessed_emails(self):

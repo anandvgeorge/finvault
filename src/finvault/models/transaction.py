@@ -16,3 +16,4 @@ class Transaction:
     reference: str | None
     email_id: str | None = None
     category: str | None = None
+    comment: str | None = None

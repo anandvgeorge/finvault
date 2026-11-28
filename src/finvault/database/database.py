@@ -21,6 +21,14 @@ class Database:
         )
         self._create_tables()
 
+    def update_transaction_comment(self, transaction_id: int, comment: str | None) -> bool:
+        uri = self.db_path.resolve().as_uri() + "?mode=rw"
+        with closing(sqlite3.connect(uri, uri=True, timeout=10)) as connection, connection:
+            cursor = connection.execute(
+                "UPDATE transactions SET comment = ? WHERE id = ?", (comment, transaction_id),
+            )
+            return cursor.rowcount == 1
+
     def _create_tables(self):
         self.connection.execute(
             """
@@ -51,6 +59,7 @@ class Database:
                 reference TEXT,
                 email_id TEXT UNIQUE,
                 category TEXT,
+                comment TEXT,
                 FOREIGN KEY (email_id) REFERENCES emails(gmail_id)
             )
             """
@@ -158,9 +167,10 @@ class Database:
                 source,
                 reference,
                 email_id,
-                category
+                category,
+                comment
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(transaction.amount),
@@ -173,6 +183,7 @@ class Database:
                 transaction.reference,
                 transaction.email_id,
                 transaction.category,
+                transaction.comment,
             ),
         )
 
