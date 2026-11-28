@@ -330,6 +330,7 @@ function initializeManualEntry(document, { getCatalog, onSaved, onMessage }) {
             merchant: input("merchant").value.trim(), transaction_date: input("date").value,
             source: input("source").value, category: input("category").value || null,
             account: input("account").value.trim(), reference: input("reference").value.trim() || null,
+            comment: input("comment").value.trim() || null,
         };
         saving = true; error.textContent = ""; state();
         try {

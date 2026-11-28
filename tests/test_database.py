@@ -15,6 +15,23 @@ from tests.fixtures import email, transaction
 
 
 class DatabaseTests(unittest.TestCase):
+    def test_comments_survive_repeated_startup_and_duplicate_ingestion(self):
+        self.database.save_email(email("comment"), "UPI")
+        self.database.save_transaction(transaction("comment"))
+        def reopen():
+            db = Database(str(self.path))
+            db.close()
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            list(executor.map(lambda _: reopen(), range(3)))
+        row = self.database.connection.execute("SELECT id, comment FROM transactions").fetchone()
+        self.assertIsNone(row[1])
+        self.assertTrue(self.database.update_transaction_comment(row[0], "Lunch with design team"))
+        reopen()
+        self.database.save_transaction(transaction("comment"))
+        self.assertEqual(self.database.connection.execute("SELECT comment FROM transactions").fetchone()[0], "Lunch with design team")
+        self.assertTrue(self.database.update_transaction_comment(row[0], None))
+        self.assertFalse(self.database.update_transaction_comment(99999, "Missing"))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

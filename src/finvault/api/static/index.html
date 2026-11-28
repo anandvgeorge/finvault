@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/static/summary-controls.css">
     <link rel="stylesheet" href="/static/analysis.css">
     <link rel="stylesheet" href="/static/manual-entry.css">
+    <link rel="stylesheet" href="/static/comments.css">
     <style>
         :root {
             color-scheme: dark;
@@ -330,6 +331,7 @@
                 <div class="manual-wide"><label id="manual-category-label" for="manual-category">Category</label><select id="manual-category" name="category" aria-label="Transaction category"><option value="">Uncategorized</option></select></div>
                 <div><label for="manual-account">Account (optional)</label><input id="manual-account" name="account" type="text" maxlength="200" autocomplete="off"></div>
                 <div><label for="manual-reference">Reference (optional)</label><input id="manual-reference" name="reference" type="text" maxlength="200" autocomplete="off"></div>
+                <div class="manual-wide"><label for="manual-comment">Comment (optional)</label><input id="manual-comment" name="comment" type="text" maxlength="500" autocomplete="off"></div>
             </fieldset>
             <p id="manual-entry-error" class="manual-entry-error" role="status" aria-live="polite"></p>
             <div class="manual-footer">
@@ -344,6 +346,15 @@
         <p id="delete-transaction-error" class="manual-entry-error" role="status" aria-live="polite"></p>
         <div class="manual-footer"><button id="cancel-delete-transaction" type="button" class="period-button" autofocus>Cancel</button><button id="confirm-delete-transaction" type="button" class="period-button manual-delete-confirm">Delete transaction</button></div>
     </dialog>
+    <dialog id="comment-dialog" class="manual-dialog" aria-labelledby="comment-heading" aria-describedby="comment-merchant">
+        <form id="comment-form">
+            <div class="manual-heading"><h2 id="comment-heading">Comment</h2><p id="comment-merchant"></p></div>
+            <div class="manual-fields"><div class="manual-wide"><label for="transaction-comment">Comment (optional)</label><textarea id="transaction-comment" maxlength="500" rows="3"></textarea></div></div>
+            <p id="comment-error" class="manual-entry-error" role="status" aria-live="polite"></p>
+            <div class="manual-footer"><button id="cancel-comment" type="button" class="period-button">Cancel</button><button id="save-comment" type="submit" class="period-button manual-save">Save comment</button></div>
+        </form>
+    </dialog>
+    <script src="/static/comments.js"></script>
     <script src="/static/ui.js"></script>
     <script src="/static/summary-controls.js"></script>
     <script src="/static/category-picker.js"></script>
@@ -593,6 +604,12 @@
                 if (!pending && state.status !== "saving") void refresh({ preserveView: true });
             });
             let loadedTransactions = null;
+            const comments = initializeComments(document, saved => {
+                const record = loadedTransactions?.find(item => item.id === saved.id);
+                if (record) record.comment = saved.comment;
+                if (loadedTransactions !== null) renderTransactions(loadedTransactions);
+                document.querySelector(`tr[data-id="${saved.id}"] .merchant-comment-trigger`)?.focus({ preventScroll: true });
+            });
             let picker;
             const analysis = new AnalysisView(document, amountVisibility, () => {
                 if (loadedTransactions !== null) renderTransactions(loadedTransactions);
@@ -653,6 +670,16 @@
                             badge.textContent = value;
                             cell.appendChild(badge);
                         }
+                        else if (index === 1) {
+                            const merchant = document.createElement("button");
+                            merchant.type = "button";
+                            merchant.className = "merchant-comment-trigger";
+                            merchant.textContent = value;
+                            merchant.setAttribute("aria-label", `${transaction.comment ? "Edit" : "Add"} comment for ${value}`);
+                            merchant.setAttribute("aria-haspopup", "dialog");
+                            merchant.onclick = () => comments.open(transaction);
+                            cell.appendChild(merchant);
+                        }
                         else cell.textContent = value;
                         if (index === 1 && transaction.is_manual === true) {
                             const remove = document.createElement("button");
@@ -662,6 +689,16 @@
                             remove.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>';
                             remove.onclick = () => manualDeletion.open(transaction);
                             cell.appendChild(remove);
+                        }
+                        if (index === 1 && transaction.comment) {
+                            const note = document.createElement("button");
+                            note.type = "button";
+                            note.className = "transaction-comment";
+                            note.textContent = transaction.comment;
+                            note.setAttribute("aria-label", `Edit comment for ${transaction.merchant}: ${transaction.comment}`);
+                            note.setAttribute("aria-haspopup", "dialog");
+                            note.onclick = () => comments.open(transaction);
+                            cell.appendChild(note);
                         }
                         row.appendChild(cell);
                     }
